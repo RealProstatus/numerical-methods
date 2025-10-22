@@ -5,24 +5,16 @@
 #include <mkl.h>
 //#include <lapacke.h>
 #include <iostream>
-#include <vector>
-#include <complex>
 #include <cmath>
 #include <cassert>
+
+#include "Utils.h"
+
 using namespace std;
-
-using complexd = std::complex<double>;
-using CMatrix = std::vector<complexd>; // row-major N*N
-
-// ------ utility: index for row-major ------
-inline int idx(int i, int j, int N) { return i * N + j; }
+using namespace utils;
 
 // ------ simple helpers ------
-CMatrix eye(int N) {
-    CMatrix I((size_t)N * N, complexd(0.0, 0.0));
-    for (int i = 0; i < N; ++i) I[idx(i, i, N)] = complexd(1.0, 0.0);
-    return I;
-}
+
 
 void printMat(const CMatrix& A, int N, const string& name = "A") {
     cout << name << " (" << N << "x" << N << "):\n";
