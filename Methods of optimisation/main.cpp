@@ -13,23 +13,6 @@
 using namespace std;
 using namespace utils;
 
-// ------ simple helpers ------
-
-
-void printMat(const CMatrix& A, int N, const string& name = "A") {
-    cout << name << " (" << N << "x" << N << "):\n";
-    cout.setf(std::ios::fixed); cout.precision(8);
-    for (int i = 0; i < N; i++) {
-        for (int j = 0; j < N; j++) {
-            complexd v = A[idx(i, j, N)];
-            // print as a+bi
-            cout << "(" << v.real() << (v.imag() >= 0 ? "+" : "") << v.imag() << "i) ";
-        }
-        cout << "\n";
-    }
-    cout << "\n";
-}
-
 // ------ BLAS wrapper for C = alpha * A * B + beta * C, row-major, complex ------
 void matmul(const CMatrix& A, const CMatrix& B, CMatrix& C,
     int N, complexd alpha = complexd(1.0, 0.0), complexd beta = complexd(0.0, 0.0)) {

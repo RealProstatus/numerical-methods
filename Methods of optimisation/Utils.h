@@ -1,5 +1,6 @@
 #pragma once
 
+#include <iostream>
 #include <complex>
 #include <vector>
 #include <random>
@@ -9,7 +10,7 @@ using namespace std;
 using complexd = complex<double>;
 using CMatrix = vector<complexd>;
 
-namespace utils
+namespace utils  
 {
     inline int idx(int i, int j, int N) {
         return i * N + j;
@@ -36,14 +37,18 @@ namespace utils
         return matrix;
     }
 
-    void print_matrix(const CMatrix& matrix, int N) {
-        for (int i = 0; i < N; ++i) {
-            for (int j = 0; j < N; ++j) {
-                auto val = matrix[idx(i, j, N)];
-                std::cout << "(" << val.real() << ", " << val.imag() << ") ";
+    void printMat(const CMatrix& A, int N, const string& name = "A") {
+        cout << name << " (" << N << "x" << N << "):\n";
+        cout.setf(std::ios::fixed); cout.precision(8);
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < N; j++) {
+                complexd v = A[idx(i, j, N)];
+                // print as a+bi
+                cout << "(" << v.real() << (v.imag() >= 0 ? "+" : "") << v.imag() << "i) ";
             }
-            std::cout << std::endl;
+            cout << "\n";
         }
+        cout << "\n";
     }
 
     CMatrix eye(int N) {
