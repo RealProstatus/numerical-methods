@@ -1,6 +1,7 @@
 ﻿#include "MatrixOperations.h"
 #include <mkl.h>
 #include <iostream>
+#include <map>
 
 namespace matrix_ops {
     // 1. Базовые матричные операции
@@ -108,25 +109,48 @@ namespace matrix_ops {
         return result;
     }
 
-    vector<CMatrix> compute_S_n_j(int n, int j, const vector<CMatrix>& Omega,
-        const vector<CMatrix>& A_samples, int N) {
+    vector<CMatrix> compute_S_n_j(int n, int j,
+        const vector<CMatrix>& Omega,
+        const vector<CMatrix>& A_samples, int N)
+    {
+        // 🔹 Статический кэш для уже вычисленных (n, j)
+        static std::map<std::pair<int, int>, vector<CMatrix>> cache;
+
+        auto key = std::make_pair(n, j);
+        auto it = cache.find(key);
+        if (it != cache.end()) {
+            return it->second; // Возвращаем уже готовое значение
+        }
+
         vector<CMatrix> S_samples(A_samples.size());
 
         if (j == 1) {
-            for (size_t t = 0; t < A_samples.size(); ++t) {
+            // S_n^(1)(t) = [Ω_(n-1), A(t)]
+            for (size_t t = 0; t < A_samples.size(); ++t)
                 S_samples[t] = commutator(Omega[n - 1], A_samples[t], N);
-            }
         }
         else if (j == n - 1) {
-            for (size_t t = 0; t < A_samples.size(); ++t) {
+            // S_n^(n-1)(t) = ad_{Ω_1}^{n-1}(A(t))
+            for (size_t t = 0; t < A_samples.size(); ++t)
                 S_samples[t] = compute_ad_Omega_k(Omega[1], A_samples[t], n - 1, N);
-            }
         }
         else {
+            // Общий случай: рекурсивное определение
             for (size_t t = 0; t < A_samples.size(); ++t) {
                 CMatrix sum((size_t)N * N, complexd(0.0, 0.0));
                 for (int m = 1; m <= n - j; ++m) {
-                    vector<CMatrix> S_nm_j1_samples = compute_S_n_j(n - m, j - 1, Omega, A_samples, N);
+                    // 🔹 Рекурсивный вызов, но с кэшированием
+                    auto key_sub = std::make_pair(n - m, j - 1);
+                    vector<CMatrix> S_nm_j1_samples;
+                    auto it2 = cache.find(key_sub);
+                    if (it2 != cache.end()) {
+                        S_nm_j1_samples = it2->second;
+                    }
+                    else {
+                        S_nm_j1_samples = compute_S_n_j(n - m, j - 1, Omega, A_samples, N);
+                        cache[key_sub] = S_nm_j1_samples;
+                    }
+
                     CMatrix comm = commutator(Omega[m], S_nm_j1_samples[t], N);
                     mat_add(sum, comm, sum, N);
                 }
@@ -134,6 +158,8 @@ namespace matrix_ops {
             }
         }
 
+        // 🔹 Сохраняем в кэш перед возвратом
+        cache[key] = S_samples;
         return S_samples;
     }
 }

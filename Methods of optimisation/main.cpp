@@ -165,11 +165,8 @@ int main() {
 
     cout << "2.3 Computing U(0," << delta_t << ") = exp(i*Omega) via Taylor series..." << endl;
 
-    // Multiply Omega by i for the exponential
-    CMatrix iOmega = mat_copy(Omega);
-    mat_scale_inplace(iOmega, N, complexd(0.0, 1.0));
-
-    CMatrix U_magnus = expm_taylor(iOmega, N, 30);
+    // Используем Omega напрямую без дополнительного i
+    CMatrix U_magnus = expm_taylor(Omega, N, 30);
 
     cout << "Magnus expansion completed." << endl;
 
