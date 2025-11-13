@@ -16,6 +16,7 @@ namespace matrix_ops {
     void mat_sub(const CMatrix& A, const CMatrix& B, CMatrix& C, int N);
     void mat_scale_inplace(CMatrix& A, int N, complexd alpha);
     CMatrix mat_copy(const CMatrix& A);
+    CMatrix mat_scale(const CMatrix& A, complexd alpha);
 
     // ВЫЧИСЛЕНИЕ КОММУТАТОРА: [A, B] = A*B - B*A
     // A, B - входные матрицы, N - размер
@@ -45,4 +46,11 @@ namespace matrix_ops {
     // Возвращает: вектор матриц S_n^(j) для всех моментов времени
     vector<CMatrix> compute_S_n_j(int n, int j, const vector<CMatrix>& Omega,
         const vector<CMatrix>& A_samples, int N);
+
+    CMatrix right_nested_comm(const vector<CMatrix>& A_samples, const vector<int>& perm, int N);
+
+    CMatrix compute_Omega5_ACC(const vector<CMatrix>& A, int N);
+    CMatrix compute_Omega6_ACC(const vector<CMatrix>& A, int N);
+
+    CMatrix expm_chebyshev(const CMatrix& Omega, int N, int M);
 }

@@ -14,6 +14,22 @@ using namespace utils;
 using namespace matrix_ops;
 using namespace runge_kutta_simple;
 
+//  ------ Generation of permutations {2,3,...,n} ------ 
+// Генерация всех перестановок вектора base
+void generate_permutations(vector<int>& base, vector<vector<int>>& result, int start = 0) {
+    int n = base.size();
+    if (start == n) {
+        result.push_back(base);
+        return;
+    }
+
+    for (int i = start; i < n; ++i) {
+        swap(base[start], base[i]);
+        generate_permutations(base, result, start + 1);
+        swap(base[start], base[i]); // откатываем для следующей итерации
+    }
+}
+
 // ------ Trapezoidal integration for matrix functions ------
 vector<CMatrix> generate_samples(double t0, double t1, double dt, int N,
     const CMatrix& H0, const CMatrix& H_mod,
@@ -116,6 +132,87 @@ CMatrix magnus_expansion(double t0, double t1, double integration_dt, int N,
     return Omega_total;
 }
 
+// =========================================================
+// =================== Magnus ACC up to 6 ==================
+// =========================================================
+
+CMatrix magnus_ACC_up_to_6(
+    const vector<CMatrix>& A_samples,
+    double dt,
+    int N)
+{
+    vector<CMatrix> Omega(7); // Omega[1..6]
+
+    // === Ω1 ===
+    Omega[1] = trapezoidal_integral(A_samples, dt, N);
+
+    // === Ω2..Ω4 ===
+    for (int n = 2; n <= 4; ++n)
+    {
+        CMatrix sum(N * N, complexd(0, 0));
+
+        // Генерируем все перестановки множества {2,...,n}
+        vector<vector<int>> perms;
+        vector<int> base(n - 1);
+        for (int i = 0; i < n - 1; ++i) base[i] = i + 1; // 1..n-1 (0-based для A_samples)
+        generate_permutations(base, perms);
+
+        for (auto& p : perms)
+        {
+            // Вставляем t1 в конец
+            p.push_back(0); // t1 — первый элемент A_samples
+
+            // Вычисляем правонестед-коммутатор через новую функцию
+            CMatrix comm = right_nested_comm(A_samples, p, N);
+
+            // Интегрируем по времени
+            vector<CMatrix> comm_samples = { comm };
+            CMatrix integ = trapezoidal_integral(comm_samples, dt, N);
+
+            // Коэффициент cp (упрощённо)
+            double cp = 1.0 / n;
+            mat_scale_inplace(integ, N, complexd(cp, 0.0));
+
+            mat_add(sum, integ, sum, N);
+        }
+
+        Omega[n] = sum;
+    }
+
+    // === Ω5 и Ω6 ===
+    CMatrix O5 = compute_Omega5_ACC(A_samples, N);
+    CMatrix O6 = compute_Omega6_ACC(A_samples, N);
+
+    // === Суммируем все члены ===
+    CMatrix Omega_total(N * N, complexd(0, 0));
+    for (int i = 1; i <= 4; ++i)
+        mat_add(Omega_total, Omega[i], Omega_total, N);
+    mat_add(Omega_total, O5, Omega_total, N);
+    mat_add(Omega_total, O6, Omega_total, N);
+
+    return Omega_total;
+}
+
+// Главная функция для метода Магнуса–Чебышева
+CMatrix magnus_chebyshev(double t0, double t1, double integration_dt, int N,
+    const CMatrix& H0, const CMatrix& H_mod,
+    double eps0, double W, int M = 20)
+{
+    using namespace std;
+    cout << "=== Magnus-Chebyshev method ===" << endl;
+
+    vector<CMatrix> A_samples = generate_samples(t0, t1, integration_dt, N, H0, H_mod, eps0, W);
+    cout << "Computing Ω₁ using trapezoidal rule..." << endl;
+
+    CMatrix Omega = trapezoidal_integral(A_samples, integration_dt, N);
+
+    cout << "Computing exp(Ω) using Chebyshev expansion (order M=" << M << ")..." << endl;
+    CMatrix U_cheb = expm_chebyshev(Omega, N, M);
+
+    cout << "Magnus-Chebyshev completed." << endl;
+    return U_cheb;
+}
+
 // ------ Main function implementing the requested steps ------
 int main() {
     const int N = 10;
@@ -170,29 +267,77 @@ int main() {
 
     cout << "Magnus expansion completed." << endl;
 
+    cout << "\n=== Step 3: Magnus ACC expansion (orders 1..6) ===" << endl;
+
+    cout << "3.1 Generating A(t) samples for ACC..." << endl;
+    vector<CMatrix> A_samples_ACC = generate_samples(0.0, delta_t, integration_dt, N, H0, H_mod, eps0, W);
+
+    cout << "3.2 Computing Magnus ACC expansion up to order 6..." << endl;
+    CMatrix Omega_ACC = magnus_ACC_up_to_6(A_samples_ACC, integration_dt, N);
+
+    cout << "3.3 Omega_ACC(0, " << delta_t << ") computed" << endl;
+
+    cout << "3.4 Computing U_ACC(0," << delta_t << ") = exp(Omega_ACC) via Taylor series..." << endl;
+    CMatrix U_ACC = expm_taylor(Omega_ACC, N, 30);
+
+    cout << "Magnus ACC expansion completed." << endl;
+
+    cout << "\n=== Step 4: Magnus–Chebyshev method ===" << endl;
+
+    CMatrix U_cheb = magnus_chebyshev(0.0, delta_t, integration_dt, N, H0, H_mod, eps0, W, 300);
+
+    cout << "U_Magnus_Chebyshev.txt saved." << endl;
+
     // Compare results
     cout << "\n=== Comparison ===" << endl;
 
-    // Compute difference between methods
-    CMatrix diff((size_t)N * N, complexd(0.0, 0.0));
-    mat_sub(U_rk, U_magnus, diff, N);
+    // 1️. Runge-Kutta vs Classic Magnus
+    CMatrix diff_rk_magnus((size_t)N * N, complexd(0.0, 0.0));
+    mat_sub(U_rk, U_magnus, diff_rk_magnus, N);
 
-    double max_diff = 0.0;
-    for (size_t k = 0; k < diff.size(); ++k) {
-        max_diff = max(max_diff, abs(diff[k]));
-    }
+    double max_diff_rk_magnus = 0.0;
+    for (size_t k = 0; k < diff_rk_magnus.size(); ++k)
+        max_diff_rk_magnus = max(max_diff_rk_magnus, abs(diff_rk_magnus[k]));
 
-    cout << "Maximum difference between RK and Magnus methods: " << max_diff << endl;
+    cout << "Maximum difference between RK and Classic Magnus: " << max_diff_rk_magnus << endl;
+
+    // 2️. Classic Magnus vs Magnus ACC
+    CMatrix diff_magnus_ACC((size_t)N * N, complexd(0.0, 0.0));
+    mat_sub(U_magnus, U_ACC, diff_magnus_ACC, N);
+
+    double max_diff_magnus_ACC = 0.0;
+    for (size_t k = 0; k < diff_magnus_ACC.size(); ++k)
+        max_diff_magnus_ACC = max(max_diff_magnus_ACC, abs(diff_magnus_ACC[k]));
+
+    cout << "Maximum difference between Classic Magnus and Magnus ACC: " << max_diff_magnus_ACC << endl;
+
+    // 3️. Runge-Kutta vs Magnus–Chebyshev
+    CMatrix diff_rk_cheb((size_t)N * N, complexd(0.0, 0.0));
+    mat_sub(U_rk, U_cheb, diff_rk_cheb, N);
+
+    double max_diff_rk_cheb = 0.0;
+    for (size_t k = 0; k < diff_rk_cheb.size(); ++k)
+        max_diff_rk_cheb = max(max_diff_rk_cheb, abs(diff_rk_cheb[k]));
+
+    cout << "Maximum difference between RK and Magnus-Chebyshev: " << max_diff_rk_cheb << endl;
+
 
     // Save results
     save_matrix(U_rk, N, "U_runge_kutta.txt");
     save_matrix(U_magnus, N, "U_magnus.txt");
     save_matrix(Omega, N, "Omega_magnus.txt");
+    save_matrix(U_ACC, N, "U_ACC.txt");
+    save_matrix(Omega_ACC, N, "Omega_magnus_ACC.txt");
+    save_matrix(diff_magnus_ACC, N, "diff_magnus_ACC.txt");
+    save_matrix(U_cheb, N, "U_Magnus_Chebyshev.txt");
 
     cout << "\nResults saved to files:" << endl;
     cout << "- U_runge_kutta.txt: Runge-Kutta result" << endl;
     cout << "- U_magnus.txt: Magnus expansion result" << endl;
     cout << "- Omega_magnus.txt: Magnus operator Omega" << endl;
+    cout << "- U_magnus_ACC.txt: Magnus ACC method expansion result" << endl;
+    cout << "- Omega_magnus_ACC.txt: Magnus ACC method operator Omega" << endl;
+    cout << "- diff_magnus_ACC.txt: Difference between classic Magnus method and Magnus ACC method expansions" << endl;
 
     return 0;
 }

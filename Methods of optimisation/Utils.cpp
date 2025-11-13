@@ -44,37 +44,29 @@ namespace utils
     }
 
     void save_matrix(const CMatrix& mat, int N, const string& filename) {
-        ofstream file(filename);
-        file << "Matrix " << N << "x" << N << ":\n";
-        file << "========================================\n";
+    ofstream file(filename);
+    file << "Matrix " << N << "x" << N << ":\n";
+    file << "========================================\n";
 
-        for (int i = 0; i < N; ++i) {
-            file << "[ ";
-            for (int j = 0; j < N; ++j) {
-                complexd val = mat[idx(i, j, N)];
+    // Научная запись с 12 значащими цифрами
+    file << scientific << setprecision(12);
 
-                // Форматируем вывод
-                file << "(";
+    for (int i = 0; i < N; ++i) {
+        file << "[ ";
+        for (int j = 0; j < N; ++j) {
+            complexd val = mat[idx(i, j, N)];
 
-                // Действительная часть
-                if (abs(val.real()) < 1e-10)
-                    file << " 0.0000";
-                else
-                    file << fixed << setprecision(6) << setw(8) << val.real();
+            file << "(";
+            file << val.real();
+            if (val.imag() >= 0) file << " +";
+            file << val.imag() << "i";
+            file << ")";
 
-                // Мнимая часть  
-                if (val.imag() >= 0)
-                    file << " +" << fixed << setprecision(6) << setw(8) << val.imag() << "i";
-                else
-                    file << " " << fixed << setprecision(6) << setw(8) << val.imag() << "i";
-
-                file << ")";
-
-                if (j < N - 1) file << "  ";
-            }
-            file << " ]\n";
+            if (j < N - 1) file << "  ";
         }
-        file << "========================================\n";
-        file.close();
+        file << " ]\n";
     }
+    file << "========================================\n";
+    file.close();
+}
 }
