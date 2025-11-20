@@ -4,65 +4,65 @@ Timing + Error results for Magnus methods
 ========== Recursive Magnus ==========
 
 -- Taylor exponential --
-Recursive Taylor   1   1.3307   1.26507
-Recursive Taylor   2   1.9246   1.26507
-Recursive Taylor   3   3.4832   1.26507
-Recursive Taylor   4   2.9672   1.26507
-Recursive Taylor   5   3.6873   1.26507
-Recursive Taylor   6   19.3298   1.26507
-Recursive Taylor   7   36.1926   1.26507
-Recursive Taylor   8   32.8555   1.26507
-Recursive Taylor   9   8.7442   1.26507
-Recursive Taylor   10   9.5202   1.26507
-Recursive Taylor   11   3428.43   1.26507
-Recursive Taylor   12   4515.82   1.26507
-Recursive Taylor   13   5340.27   1.26507
-Recursive Taylor   14   6105.76   1.26507
-Recursive Taylor   15   7095.5   1.26507
+Recursive Taylor   1   1.883   0.0129884
+Recursive Taylor   2   2.3252   0.0129884
+Recursive Taylor   3   2.4031   0.0129884
+Recursive Taylor   4   3.3925   0.0129884
+Recursive Taylor   5   5.2428   0.0129884
+Recursive Taylor   6   5.7754   0.0129884
+Recursive Taylor   7   6.501   0.0129884
+Recursive Taylor   8   57.0138   0.0129884
+Recursive Taylor   9   9.4664   0.0129884
+Recursive Taylor   10   10.0272   0.0129884
+Recursive Taylor   11   3388.61   0.0129884
+Recursive Taylor   12   4464.17   0.0129884
+Recursive Taylor   13   5424.31   0.0129884
+Recursive Taylor   14   6523.04   0.0129884
+Recursive Taylor   15   7554.92   0.0129884
 
 -- Chebyshev exponential --
-Recursive Cheb     1   18.7053   1.21908
-Recursive Cheb     2   4.4345   1.21908
-Recursive Cheb     3   22.4911   1.21908
-Recursive Cheb     4   3.4012   1.21908
-Recursive Cheb     5   3.9865   1.21908
-Recursive Cheb     6   51.0465   1.21908
-Recursive Cheb     7   85.1256   1.21908
-Recursive Cheb     8   59.4323   1.21908
-Recursive Cheb     9   96.395   1.21908
-Recursive Cheb     10   155.416   1.21908
-Recursive Cheb     11   115.171   1.21908
-Recursive Cheb     12   63.038   1.21908
-Recursive Cheb     13   66.2317   1.21908
-Recursive Cheb     14   152.548   1.21908
-Recursive Cheb     15   93.096   1.21908
+Recursive Cheb     1   1.3328   0.270286
+Recursive Cheb     2   1.53   0.270286
+Recursive Cheb     3   2.5535   0.270286
+Recursive Cheb     4   3.1107   0.270286
+Recursive Cheb     5   4.5676   0.270286
+Recursive Cheb     6   4.7108   0.270286
+Recursive Cheb     7   6.0313   0.270286
+Recursive Cheb     8   6.9173   0.270286
+Recursive Cheb     9   10.2823   0.270286
+Recursive Cheb     10   62.5434   0.270286
+Recursive Cheb     11   89.6473   0.270286
+Recursive Cheb     12   13.244   0.270286
+Recursive Cheb     13   128.406   0.270286
+Recursive Cheb     14   60.3371   0.270286
+Recursive Cheb     15   24.1889   0.270286
 
 
 ========== ACC Magnus ==========
 
 -- Taylor exponential --
-ACC Taylor        1   0.0845   1.26507
-ACC Taylor        2   0.1154   1.26507
-ACC Taylor        3   0.1117   1.26507
-ACC Taylor        4   0.1443   1.26507
-ACC Taylor        5   0.2416   1.2651
-ACC Taylor        6   0.8669   2.07907e+42
+ACC Taylor        1   0.0816   0.0129884
+ACC Taylor        2   0.0718   0.0129884
+ACC Taylor        3   0.059   0.0129884
+ACC Taylor        4   0.0833   0.0129884
+ACC Taylor        5   0.1767   0.0129884
+ACC Taylor        6   0.7147   0.012987
 
 -- Chebyshev exponential --
-ACC Cheb          1   0.074   1.21908
-ACC Cheb          2   0.0712   1.21908
-ACC Cheb          3   0.0601   1.21908
-ACC Cheb          4   0.0809   1.21908
-ACC Cheb          5   0.1714   1.22101
-ACC Cheb          6   1.0274   1.00157
+ACC Cheb          1   0.0438   0.270286
+ACC Cheb          2   0.0456   0.270286
+ACC Cheb          3   0.0521   0.270286
+ACC Cheb          4   0.0755   0.270286
+ACC Cheb          5   0.2352   0.270286
+ACC Cheb          6   0.7261   0.270284
 
 
 ========== Classic Magnus ==========
 
 -- Taylor exponential --
-Classic Taylor    1   0.7037   1.26507
-Classic Taylor    2   480.977   1.26507
+Classic Taylor    1   0.6197   0.0129884
+Classic Taylor    2   468.118   0.0129884
 
 -- Chebyshev exponential --
-Classic Cheb      1   1.7546   1.21908
-Classic Cheb      2   482.379   1.21908
+Classic Cheb      1   11.7807   0.270286
+Classic Cheb      2   460.981   0.270286

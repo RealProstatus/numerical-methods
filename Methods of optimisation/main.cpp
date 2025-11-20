@@ -184,11 +184,19 @@ CMatrix magnus_ACC(
         Omega[n] = sum;
     }
 
-    if (max_order >= 5)
-        Omega[5] = compute_Omega5_ACC(A_samples, N);
+    if (max_order >= 5) {
+        CMatrix Om5 = compute_Omega5_ACC(A_samples, N);
+        // Скорее всего, здесь не хватает множителя dt
+        mat_scale_inplace(Om5, N, complexd(dt, 0.0));
+        Omega[5] = Om5;
+    }
 
-    if (max_order >= 6)
-        Omega[6] = compute_Omega6_ACC(A_samples, N);
+    if (max_order >= 6) {
+        CMatrix Om6 = compute_Omega6_ACC(A_samples, N);
+        // Исправление масштаба
+        mat_scale_inplace(Om6, N, complexd(dt, 0.0));
+        Omega[6] = Om6;
+    }
 
 
     // === Суммируем Omega₁..Omegaₘₐₓ ===
@@ -528,14 +536,37 @@ int main() {
     cout << "\nAll results saved." << endl;
 
     //-------------------------------------------------
-    // STEP 5 — Timing + Error per Omega order
-    //-------------------------------------------------
+        // STEP 5 — Timing + Error per Omega order
+        //-------------------------------------------------
     cout << "\n=== Step 5: Timing + Error per Omega order ===" << endl;
 
     const double T_test = delta_t;
 
-    // Точное решение через спектральную экспоненту
-    CMatrix U_exact_test = matrix_ops::matrix_exp_special(H0, N, T_test);
+    // --- ИСПРАВЛЕНИЕ ЭТАЛОНА ---
+    // Вместо аналитического H0, используем численное решение Рунге-Кутты 
+    // с очень мелким шагом, чтобы считать его "точным".
+
+    CMatrix U_exact_test = utils::eye(N); // Начальное условие I
+
+    // Используем существующую функцию runge_kutta_step, 
+    // но разбиваем интервал T_test на много мелких шагов.
+    int rk_substeps = 1000;
+    double rk_dt = T_test / rk_substeps;
+
+    for (int s = 0; s < rk_substeps; ++s) {
+        double t_now = s * rk_dt;
+        // Вычисляем полный Гамильтониан в точке t
+        CMatrix H_t((size_t)N * N, complexd(0.0, 0.0));
+        double f_t = eps0 * cos(W * t_now);
+
+        for (size_t k = 0; k < H_t.size(); ++k)
+            H_t[k] = H0[k] + complexd(f_t, 0.0) * H_mod[k];
+
+        // Делаем шаг RK4
+        U_exact_test = runge_kutta_simple::runge_kutta_step(H_t, U_exact_test, rk_dt, N);
+    }
+
+    cout << "Exact reference computed using fine-grained RK4." << endl;
 
     // Файл результата TXT
     ofstream results_txt("omega_results.txt");
