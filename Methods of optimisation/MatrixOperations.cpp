@@ -1,4 +1,5 @@
 ﻿#include "MatrixOperations.h"
+#include "Utils.h"
 #include <mkl.h>
 #include <iostream>
 #include <map>
@@ -92,6 +93,64 @@ namespace matrix_ops {
 
         return result;
     }
+
+    // ====== Exponential via Chebyshev Polynomials ======
+    // Uses Chebyshev recursion: T0=I, T1=Ω̃, T_{k+1} = 2Ω̃ T_k - T_{k-1}
+    // Coeffs c_k are given constants (Bessel-related), pre-filled
+    CMatrix expm_chebyshev(const CMatrix& Omega, int N, int K)
+    {
+        // Helper: result += alpha * B
+        auto mat_scale_add_inplace = [&](CMatrix& R, const CMatrix& B, complexd alpha)
+            {
+                size_t nn = (size_t)N * N;
+                for (size_t i = 0; i < nn; ++i)
+                    R[i] += alpha * B[i];
+            };
+
+        // 1. Norm scaling
+        double alpha = mat_one_norm(Omega, N);
+        if (alpha < 1e-15) return utils::eye(N);
+
+        CMatrix Omega_scaled = mat_copy(Omega);
+        mat_scale_inplace(Omega_scaled, N, complexd(1.0 / alpha, 0.0));
+
+        // 2. Predefined coefficients
+        static const double c_vals[] = {
+            1.0, 0.5, 0.25, 0.125, 0.0625,
+            0.03125, 0.015625, 0.0078125,
+            0.00390625, 0.001953125,
+            0.0009765625
+        };
+        int maxC = sizeof(c_vals) / sizeof(double);
+        if (K >= maxC) K = maxC - 1;
+
+        // 3. Recursion
+        CMatrix Tkm1 = utils::eye(N);
+        CMatrix Tk = mat_copy(Omega_scaled);
+        CMatrix result(N * N, complexd(0, 0));
+
+        mat_scale_add_inplace(result, Tkm1, complexd(c_vals[0], 0.0));
+        mat_scale_add_inplace(result, Tk, complexd(c_vals[1], 0.0));
+
+        for (int k = 2; k <= K; ++k)
+        {
+            CMatrix next(N * N, complexd(0, 0));
+
+            // next = 2Ω̃Tk - Tkm1
+            matmul(Omega_scaled, Tk, next, N);
+            mat_scale_inplace(next, N, complexd(2.0, 0.0));
+            mat_sub(next, Tkm1, next, N);
+
+            mat_scale_add_inplace(result, next, complexd(c_vals[k], 0.0));
+
+            Tkm1 = Tk;
+            Tk = next;
+        }
+
+        return result;
+    }
+
+
 
     // 4. Функции для разложения Магнуса
     double bernoulli_number(int j) {
