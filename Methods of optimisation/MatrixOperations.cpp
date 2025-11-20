@@ -5,6 +5,7 @@
 #include <map>
 #include <array>
 #include <cmath>
+#include <mkl_lapacke.h>
 
 namespace matrix_ops {
     // 1. Базовые матричные операции
@@ -94,57 +95,80 @@ namespace matrix_ops {
         return result;
     }
 
-    // ====== Exponential via Chebyshev Polynomials ======
-    // Uses Chebyshev recursion: T0=I, T1=Ω̃, T_{k+1} = 2Ω̃ T_k - T_{k-1}
-    // Coeffs c_k are given constants (Bessel-related), pre-filled
-    CMatrix expm_chebyshev(const CMatrix& Omega, int N, int K)
+    CMatrix expm_cheb(const CMatrix& Omega, int N, int M)
     {
-        // Helper: result += alpha * B
-        auto mat_scale_add_inplace = [&](CMatrix& R, const CMatrix& B, complexd alpha)
-            {
-                size_t nn = (size_t)N * N;
-                for (size_t i = 0; i < nn; ++i)
-                    R[i] += alpha * B[i];
-            };
+        using namespace std;
 
-        // 1. Norm scaling
+        // 1. Оценка спектрального радиуса (alpha)
+        // Так как Omega антиэрмитова, 1-нормы достаточно для оценки радиуса
         double alpha = mat_one_norm(Omega, N);
-        if (alpha < 1e-15) return utils::eye(N);
 
-        CMatrix Omega_scaled = mat_copy(Omega);
-        mat_scale_inplace(Omega_scaled, N, complexd(1.0 / alpha, 0.0));
+        if (alpha < 1e-14)
+            return utils::eye(N);
 
-        // 2. Predefined coefficients
-        static const double c_vals[] = {
-            1.0, 0.5, 0.25, 0.125, 0.0625,
-            0.03125, 0.015625, 0.0078125,
-            0.00390625, 0.001953125,
-            0.0009765625
-        };
-        int maxC = sizeof(c_vals) / sizeof(double);
-        if (K >= maxC) K = maxC - 1;
+        // 2. Нормировка и поворот к Эрмитову виду
+        // Нам нужна матрица X с вещественными с.ч. в диапазоне [-1, 1].
+        // Так как Omega ~ -i*H, то X = i * Omega / alpha
+        CMatrix X = mat_copy(Omega);
+        // Умножаем на i/alpha
+        mat_scale_inplace(X, N, complexd(0.0, 1.0 / alpha));
 
-        // 3. Recursion
-        CMatrix Tkm1 = utils::eye(N);
-        CMatrix Tk = mat_copy(Omega_scaled);
-        CMatrix result(N * N, complexd(0, 0));
+        // 3. Инициализация рекурсии Чебышева
+        // T_0(X) = I
+        CMatrix Tk_prev = utils::eye(N);
+        // T_1(X) = X
+        CMatrix Tk_curr = mat_copy(X);
 
-        mat_scale_add_inplace(result, Tkm1, complexd(c_vals[0], 0.0));
-        mat_scale_add_inplace(result, Tk, complexd(c_vals[1], 0.0));
+        CMatrix result(N * N, complexd(0.0, 0.0));
 
-        for (int k = 2; k <= K; ++k)
+        // 4. Нулевой член разложения: J_0(alpha) * T_0
+        // Используем cyl_bessel_j (обычный Бессель), так как экспонента мнимая
+        double J0 = std::cyl_bessel_j(0, alpha);
+
+        for (size_t i = 0; i < result.size(); ++i)
+            result[i] += complexd(J0, 0.0) * Tk_prev[i];
+
+        // 5. Первый член разложения: 2 * (-i)^1 * J_1(alpha) * T_1
+        // (-i)^1 = -i
+        double J1 = std::cyl_bessel_j(1, alpha);
+        complexd coeff1 = complexd(0.0, -2.0 * J1); // -2i * J1
+
+        for (size_t i = 0; i < result.size(); ++i)
+            result[i] += coeff1 * Tk_curr[i];
+
+        // 6. Рекурсия Чебышева для k >= 2
+        // T_{k+1} = 2 * X * T_k - T_{k-1}
+
+        for (int k = 2; k <= M; ++k)
         {
-            CMatrix next(N * N, complexd(0, 0));
+            CMatrix Tk_next(N * N, complexd(0.0, 0.0));
 
-            // next = 2Ω̃Tk - Tkm1
-            matmul(Omega_scaled, Tk, next, N);
-            mat_scale_inplace(next, N, complexd(2.0, 0.0));
-            mat_sub(next, Tkm1, next, N);
+            // temp = X * Tk_curr
+            matmul(X, Tk_curr, Tk_next, N);
+            // next = 2 * temp
+            mat_scale_inplace(Tk_next, N, complexd(2.0, 0.0));
+            // next = next - Tk_prev
+            mat_sub(Tk_next, Tk_prev, Tk_next, N);
 
-            mat_scale_add_inplace(result, next, complexd(c_vals[k], 0.0));
+            // Коэффициент: 2 * (-i)^k * J_k(alpha)
+            double Jk = std::cyl_bessel_j(k, alpha);
 
-            Tkm1 = Tk;
-            Tk = next;
+            // Вычисляем (-i)^k
+            complexd i_pow_k;
+            int rem = k % 4;
+            if (rem == 0) i_pow_k = complexd(1.0, 0.0);
+            else if (rem == 1) i_pow_k = complexd(0.0, -1.0); // -i
+            else if (rem == 2) i_pow_k = complexd(-1.0, 0.0);
+            else i_pow_k = complexd(0.0, 1.0); // i
+
+            complexd coeff = complexd(2.0 * Jk, 0.0) * i_pow_k;
+
+            for (size_t i = 0; i < result.size(); ++i)
+                result[i] += coeff * Tk_next[i];
+
+            // Сдвиг для следующей итерации
+            Tk_prev = Tk_curr;
+            Tk_curr = Tk_next;
         }
 
         return result;

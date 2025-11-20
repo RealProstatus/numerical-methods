@@ -11,18 +11,20 @@ namespace utils
         uniform_real_distribution<double> dist(-1.0, 1.0);
 
         for (int i = 0; i < N; i++) {
-            matrix[idx(i, i, N)] = { dist(gen) * dominance_factor + 50.0, 0.0 };
+            // Диагональное преобладание ×10
+            matrix[idx(i, i, N)] = { (dist(gen) * dominance_factor + 50.0) * 10.0, 0.0 };
 
             for (int j = i + 1; j < N; j++) {
                 double real = dist(gen);
                 double imag = dist(gen);
-                matrix[idx(i, j, N)] = { real,imag };
-                matrix[idx(j, i, N)] = { real,-imag };
+                matrix[idx(i, j, N)] = { real, imag };
+                matrix[idx(j, i, N)] = { real, -imag };
             }
         }
 
         return matrix;
     }
+
 
     void printMat(const CMatrix& A, int N, const string& name) {
         cout << name << " (" << N << "x" << N << "):\n";
