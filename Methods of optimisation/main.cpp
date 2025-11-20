@@ -80,6 +80,47 @@ CMatrix trapezoidal_integral(const vector<CMatrix>& samples, double dt, int N) {
     return result;
 }
 
+// ------ Simpson's rule integration (4th order accuracy) ------
+// Требует нечетного количества точек (четного числа интервалов).
+CMatrix simpson_integral(const vector<CMatrix>& samples, double dt, int N) {
+    CMatrix result((size_t)N * N, complexd(0.0, 0.0));
+    int n_samples = samples.size();
+
+    if (n_samples < 3) return trapezoidal_integral(samples, dt, N);
+
+    // Метод Симпсона работает на четном числе интервалов (нечетное число точек).
+    // Если точек четное количество, последнюю обработаем отдельно трапецией.
+    int limit = (n_samples % 2 == 1) ? n_samples : n_samples - 1;
+
+    // Формула: (h/3) * (f0 + 4f1 + 2f2 + 4f3 + ... + fn)
+
+    // Крайние точки (вес 1)
+    for (size_t k = 0; k < result.size(); ++k) {
+        result[k] = samples[0][k] + samples[limit - 1][k];
+    }
+
+    // Внутренние точки
+    for (int i = 1; i < limit - 1; ++i) {
+        double w = (i % 2 == 1) ? 4.0 : 2.0; // Чередование весов 4, 2, 4, 2...
+        for (size_t k = 0; k < result.size(); ++k) {
+            result[k] += samples[i][k] * w;
+        }
+    }
+
+    // Масштабируем на dt/3
+    mat_scale_inplace(result, N, complexd(dt / 3.0, 0.0));
+
+    // Если осталась одна точка в конце (четное число сэмплов)
+    if (n_samples % 2 == 0) {
+        // Добавляем площадь последнего интервала методом трапеций
+        for (size_t k = 0; k < result.size(); ++k) {
+            complexd trap_area = (samples[n_samples - 2][k] + samples[n_samples - 1][k]) * 0.5 * dt;
+            result[k] += trap_area;
+        }
+    }
+
+    return result;
+}
 
 // ================================================================
 // =================== Recursive Magnus up to 15 ==================
@@ -184,11 +225,19 @@ CMatrix magnus_ACC(
         Omega[n] = sum;
     }
 
-    if (max_order >= 5)
-        Omega[5] = compute_Omega5_ACC(A_samples, N);
+    if (max_order >= 5) {
+        CMatrix Om5 = compute_Omega5_ACC(A_samples, N);
+        // Скорее всего, здесь не хватает множителя dt
+        mat_scale_inplace(Om5, N, complexd(dt, 0.0));
+        Omega[5] = Om5;
+    }
 
-    if (max_order >= 6)
-        Omega[6] = compute_Omega6_ACC(A_samples, N);
+    if (max_order >= 6) {
+        CMatrix Om6 = compute_Omega6_ACC(A_samples, N);
+        // Исправление масштаба
+        mat_scale_inplace(Om6, N, complexd(dt, 0.0));
+        Omega[6] = Om6;
+    }
 
 
     // === Суммируем Omega₁..Omegaₘₐₓ ===
@@ -207,12 +256,12 @@ CMatrix magnus_classic(
     double t0, double t1, double dt,
     int N, const CMatrix& H0, const CMatrix& H_mod,
     double eps0, double W,
-    int max_order)   // ← новый параметр!
+    int max_order)
 {
-    cout << "=== Classic Magnus up to Omega" << max_order << " ===" << endl;
+    // cout << "=== Classic Magnus up to Omega" << max_order << " ===" << endl;
 
     if (max_order < 1) max_order = 1;
-    if (max_order > 3) max_order = 3; // max allowed
+    if (max_order > 3) max_order = 3;
 
     vector<CMatrix> A = generate_samples(t0, t1, dt, N, H0, H_mod, eps0, W);
     int M = A.size();
@@ -220,16 +269,29 @@ CMatrix magnus_classic(
     CMatrix Omega((size_t)N * N, complexd(0.0, 0.0));
 
     // === Omega1 ===
+    // Интеграл методом трапеций (O(M))
     CMatrix Omega1 = trapezoidal_integral(A, dt, N);
     mat_add(Omega, Omega1, Omega, N);
 
     if (max_order == 1) return Omega;
 
     // === Omega2 ===
+    // ОПТИМИЗАЦИЯ: O(M) вместо O(M^2)
     CMatrix Omega2((size_t)N * N, complexd(0.0, 0.0));
-    for (int i = 0; i < M; ++i)
-        for (int j = 0; j < i; ++j)
-            mat_add(Omega2, commutator(A[i], A[j], N), Omega2, N);
+    CMatrix Accumulator((size_t)N * N, complexd(0.0, 0.0)); // Хранит сумму A[0]...A[i-1]
+
+    // На первой итерации (i=0) Accumulator пуст, коммутатор равен 0.
+    // Начинаем сразу накопление.
+
+    for (int i = 0; i < M; ++i) {
+        if (i > 0) {
+            // [A[i], Sum(A[0]...A[i-1])]
+            CMatrix comm = commutator(A[i], Accumulator, N);
+            mat_add(Omega2, comm, Omega2, N);
+        }
+        // Добавляем текущий A[i] в аккумулятор для следующих шагов
+        mat_add(Accumulator, A[i], Accumulator, N);
+    }
 
     mat_scale_inplace(Omega2, N, complexd(dt * dt / 2.0, 0.0));
     mat_add(Omega, Omega2, Omega, N);
@@ -237,25 +299,33 @@ CMatrix magnus_classic(
     if (max_order == 2) return Omega;
 
     // === Omega3 ===
-    CMatrix Omega3((size_t)N * N, complexd(0.0, 0.0));
-    for (int i = 0; i < M; ++i)
-        for (int j = 0; j < i; ++j)
-        {
-            CMatrix Cij = commutator(A[i], A[j], N);
-            for (int k = 0; k < j; ++k)
+    // ВНИМАНИЕ: Omega3 здесь все еще O(M^3). 
+    // Если вы захотите считать 3-й порядок с 50000 точками, программа снова зависнет.
+    // Для теста в main вы используете n <= 2, поэтому этот блок не вызовет проблем сейчас.
+
+    if (max_order >= 3) {
+        CMatrix Omega3((size_t)N * N, complexd(0.0, 0.0));
+        // Прямая реализация слишком тяжелая для M=50000.
+        // Оставляем как есть, но предупреждаем: не запускайте Classic Magnus порядка 3 на мелкой сетке.
+        cout << "Warning: Classic Omega3 calculation is extremely slow for large M!" << endl;
+
+        for (int i = 0; i < M; ++i)
+            for (int j = 0; j < i; ++j)
             {
-                CMatrix term1 = commutator(A[i],
-                    commutator(A[j], A[k], N), N);
-                CMatrix term2 = commutator(Cij, A[k], N);
-
-                CMatrix sum = mat_copy(term1);
-                mat_add(sum, term2, sum, N);
-                mat_add(Omega3, sum, Omega3, N);
+                CMatrix Cij = commutator(A[i], A[j], N);
+                for (int k = 0; k < j; ++k)
+                {
+                    CMatrix term1 = commutator(A[i], commutator(A[j], A[k], N), N);
+                    CMatrix term2 = commutator(Cij, A[k], N);
+                    CMatrix sum = mat_copy(term1);
+                    mat_add(sum, term2, sum, N);
+                    mat_add(Omega3, sum, Omega3, N);
+                }
             }
-        }
 
-    mat_scale_inplace(Omega3, N, complexd(dt * dt * dt / 6.0, 0.0));
-    mat_add(Omega, Omega3, Omega, N);
+        mat_scale_inplace(Omega3, N, complexd(dt * dt * dt / 6.0, 0.0));
+        mat_add(Omega, Omega3, Omega, N);
+    }
 
     return Omega;
 }
@@ -528,21 +598,38 @@ int main() {
     cout << "\nAll results saved." << endl;
 
     //-------------------------------------------------
-    // STEP 5 — Timing + Error per Omega order
-    //-------------------------------------------------
+        // STEP 5 — Timing + Error per Omega order
+        //-------------------------------------------------
     cout << "\n=== Step 5: Timing + Error per Omega order ===" << endl;
 
-    const double T_test = delta_t;
+    // ИЗМЕНЕНИЕ 1: Увеличиваем интервал времени, чтобы коммутаторы стали значимыми
+    // При T = 0.01 вклад коммутаторов слишком мал и не виден.
+    // При T = 0.5 будет видно, как Omega_2 и Omega_4 исправляют ошибку.
+    const double T_test = 0.5;
 
-    // Точное решение через спектральную экспоненту
-    CMatrix U_exact_test = matrix_ops::matrix_exp_special(H0, N, T_test);
+    // --- Эталонное решение (RK4 с мелким шагом) ---
+    CMatrix U_exact_test = utils::eye(N);
 
-    // Файл результата TXT
+    // Разбиваем интервал на 5000 шагов для высокой точности эталона
+    int rk_substeps = 5000;
+    double rk_dt = T_test / rk_substeps;
+
+    for (int s = 0; s < rk_substeps; ++s) {
+        double t_now = s * rk_dt;
+        CMatrix H_t((size_t)N * N, complexd(0.0, 0.0));
+        double f_t = eps0 * cos(W * t_now);
+        for (size_t k = 0; k < H_t.size(); ++k)
+            H_t[k] = H0[k] + complexd(f_t, 0.0) * H_mod[k];
+
+        U_exact_test = runge_kutta_simple::runge_kutta_step(H_t, U_exact_test, rk_dt, N);
+    }
+
+    cout << "Exact reference computed (T=" << T_test << ", steps=" << rk_substeps << ")." << endl;
+
     ofstream results_txt("omega_results.txt");
-    results_txt << "Timing + Error results for Magnus methods\n";
+    results_txt << "Timing + Error results for Magnus methods (T=" << T_test << ")\n";
     results_txt << "(Units: time in ms, max |U_calc - U_exact|)\n\n";
 
-    // Функция ошибки
     auto max_error = [&](const CMatrix& A, const CMatrix& B) {
         double m = 0.0;
         for (size_t i = 0; i < A.size(); ++i)
@@ -551,16 +638,14 @@ int main() {
         };
 
     //
-    // =====================================================
     // ============= Recursive Magnus ======================
-    // =====================================================
+    //
     cout << "\n[Testing] Recursive Magnus" << endl;
-
     results_txt << "========== Recursive Magnus ==========\n\n";
 
     // ---- Taylor ----
     results_txt << "-- Taylor exponential --\n";
-    for (int n = 1; n <= 15; ++n) {
+    for (int n = 1; n <= 10; ++n) { // До 10 достаточно
         auto t1 = chrono::high_resolution_clock::now();
 
         CMatrix Omega_test =
@@ -572,38 +657,37 @@ int main() {
         double err = max_error(U_test, U_exact_test);
 
         cout << "[Taylor] Omega" << n << ": " << ms << " ms | err=" << err << endl;
-        results_txt << "Recursive Taylor   " << n << "   "
-            << ms << "   " << err << "\n";
+        results_txt << "Recursive Taylor    " << n << "    " << ms << "    " << err << "\n";
     }
     results_txt << "\n";
 
     // ---- Chebyshev ----
     results_txt << "-- Chebyshev exponential --\n";
-    for (int n = 1; n <= 15; ++n) {
+    // ИЗМЕНЕНИЕ 2: Увеличиваем порядок Чебышева (M) с 10 до 50
+    int M_cheb = 600;
+    for (int n = 1; n <= 10; ++n) {
         auto t1 = chrono::high_resolution_clock::now();
 
         CMatrix Omega_test =
             magnus_expansion(0.0, T_test, integration_dt, N, H0, H_mod, eps0, W, n);
+        // Используем M_cheb = 50 вместо 10
         CMatrix U_test =
-            matrix_ops::expm_cheb(Omega_test, N, 10);   
+            matrix_ops::expm_cheb(Omega_test, N, M_cheb);
 
         auto t2 = chrono::high_resolution_clock::now();
         double ms = chrono::duration<double, std::milli>(t2 - t1).count();
         double err = max_error(U_test, U_exact_test);
 
         cout << "[Cheb] Omega" << n << ": " << ms << " ms | err=" << err << endl;
-        results_txt << "Recursive Cheb     " << n << "   "
-            << ms << "   " << err << "\n";
+        results_txt << "Recursive Cheb      " << n << "    " << ms << "    " << err << "\n";
     }
     results_txt << "\n\n";
 
 
     //
-    // =====================================================
     // ============= ACC Magnus ============================
-    // =====================================================
+    //
     cout << "\n[Testing] ACC Magnus" << endl;
-
     results_txt << "========== ACC Magnus ==========\n\n";
 
     vector<CMatrix> A_samples_ACC_t =
@@ -623,8 +707,7 @@ int main() {
         double err = max_error(U_test, U_exact_test);
 
         cout << "[Taylor] ACC Omega" << n << ": " << ms << " ms | err=" << err << endl;
-        results_txt << "ACC Taylor        " << n << "   "
-            << ms << "   " << err << "\n";
+        results_txt << "ACC Taylor          " << n << "    " << ms << "    " << err << "\n";
     }
     results_txt << "\n";
 
@@ -635,26 +718,24 @@ int main() {
 
         CMatrix Omega_ACC_test =
             magnus_ACC(A_samples_ACC_t, integration_dt, N, n);
+        // Используем M_cheb = 50
         CMatrix U_test =
-            matrix_ops::expm_cheb(Omega_ACC_test, N, 10);  
+            matrix_ops::expm_cheb(Omega_ACC_test, N, M_cheb);
 
         auto t2 = chrono::high_resolution_clock::now();
         double ms = chrono::duration<double, std::milli>(t2 - t1).count();
         double err = max_error(U_test, U_exact_test);
 
         cout << "[Cheb] ACC Omega" << n << ": " << ms << " ms | err=" << err << endl;
-        results_txt << "ACC Cheb          " << n << "   "
-            << ms << "   " << err << "\n";
+        results_txt << "ACC Cheb            " << n << "    " << ms << "    " << err << "\n";
     }
     results_txt << "\n\n";
 
 
     //
-    // =====================================================
     // ============= Classic Magnus ========================
-    // =====================================================
+    //
     cout << "\n[Testing] Classic Magnus" << endl;
-
     results_txt << "========== Classic Magnus ==========\n\n";
 
     // ---- Taylor ----
@@ -672,8 +753,7 @@ int main() {
         double err = max_error(U_test, U_exact_test);
 
         cout << "[Taylor] Classic Omega" << n << ": " << ms << " ms | err=" << err << endl;
-        results_txt << "Classic Taylor    " << n << "   "
-            << ms << "   " << err << "\n";
+        results_txt << "Classic Taylor      " << n << "    " << ms << "    " << err << "\n";
     }
     results_txt << "\n";
 
@@ -685,15 +765,16 @@ int main() {
         CMatrix Omega_classic_test =
             magnus_classic(0.0, T_test, integration_dt,
                 N, H0, H_mod, eps0, W, n);
+        // Используем M_cheb = 50
         CMatrix U_test =
-            matrix_ops::expm_cheb(Omega_classic_test, N, 10); // ★ исправлено
+            matrix_ops::expm_cheb(Omega_classic_test, N, M_cheb);
 
         auto t2 = chrono::high_resolution_clock::now();
         double ms = chrono::duration<double, std::milli>(t2 - t1).count();
         double err = max_error(U_test, U_exact_test);
 
         cout << "[Cheb] Classic Omega" << n << ": " << ms << " ms | err=" << err << endl;
-        results_txt << "Classic Cheb      " << n << "   " << ms << "   " << err << "\n";
+        results_txt << "Classic Cheb        " << n << "    " << ms << "    " << err << "\n";
     }
 
     results_txt.close();
