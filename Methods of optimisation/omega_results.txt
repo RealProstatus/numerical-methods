@@ -1,32 +1,68 @@
-Timing and Error Results for Magnus Methods
-Format: Method  Omega_Order  Time_ms  Max_Error
+Timing + Error results for Magnus methods
+(Units: time in ms, max |U_calc - U_exact|)
 
-===== Recursive Magnus =====
-Recursive   1   2.1982   0.502476
-Recursive   2   2.7721   0.502476
-Recursive   3   2.6927   0.502476
-Recursive   4   4.9963   0.502476
-Recursive   5   6.9007   0.502476
-Recursive   6   6.873   0.502476
-Recursive   7   54.6488   0.502476
-Recursive   8   94.4201   0.502476
-Recursive   9   91.4452   0.502476
-Recursive   10   11.4538   0.502476
-Recursive   11   3382.11   0.502476
-Recursive   12   4528.2   0.502476
-Recursive   13   5253.66   0.502476
-Recursive   14   6356.34   0.502476
-Recursive   15   7397.15   0.502476
+========== Recursive Magnus ==========
 
-===== Magnus ACC =====
-ACC         1   0.0922   0.502476
-ACC         2   0.1118   0.502476
-ACC         3   0.1933   0.502476
-ACC         4   0.2424   0.502476
-ACC         5   0.3237   0.502478
-ACC         6   0.8479   0.502478
+-- Taylor exponential --
+Recursive Taylor   1   26.1989   0.499175
+Recursive Taylor   2   27.8239   0.499175
+Recursive Taylor   3   4.9252   0.499175
+Recursive Taylor   4   4.9421   0.499175
+Recursive Taylor   5   5.2257   0.499175
+Recursive Taylor   6   5.5004   0.499175
+Recursive Taylor   7   5.76   0.499175
+Recursive Taylor   8   7.5901   0.499175
+Recursive Taylor   9   32.646   0.499175
+Recursive Taylor   10   11.312   0.499175
+Recursive Taylor   11   3388.64   0.499175
+Recursive Taylor   12   4289.04   0.499175
+Recursive Taylor   13   5244.31   0.499175
+Recursive Taylor   14   6230   0.499175
+Recursive Taylor   15   7142.06   0.499175
 
-===== Classic Magnus =====
-Classic     1   1.1404   0.502476
-Classic     2   484.23   0.502476
-Classic     3   997554   0.502476
+-- Chebyshev exponential --
+Recursive Cheb     1   0.9906   1.34727
+Recursive Cheb     2   1.4577   1.34727
+Recursive Cheb     3   2.9048   1.34727
+Recursive Cheb     4   17.3423   1.34727
+Recursive Cheb     5   5.2876   1.34727
+Recursive Cheb     6   65.496   1.34727
+Recursive Cheb     7   28.2153   1.34727
+Recursive Cheb     8   7.2776   1.34727
+Recursive Cheb     9   49.8641   1.34727
+Recursive Cheb     10   32.8305   1.34727
+Recursive Cheb     11   45.1734   1.34727
+Recursive Cheb     12   48.8601   1.34727
+Recursive Cheb     13   51.4267   1.34727
+Recursive Cheb     14   205.76   1.34727
+Recursive Cheb     15   28.2968   1.34727
+
+
+========== ACC Magnus ==========
+
+-- Taylor exponential --
+ACC Taylor        1   0.1021   0.499175
+ACC Taylor        2   0.0771   0.499175
+ACC Taylor        3   0.0823   0.499175
+ACC Taylor        4   0.0958   0.499175
+ACC Taylor        5   0.2125   0.499177
+ACC Taylor        6   0.9042   0.497791
+
+-- Chebyshev exponential --
+ACC Cheb          1   0.0557   1.34727
+ACC Cheb          2   0.0723   1.34727
+ACC Cheb          3   0.084   1.34727
+ACC Cheb          4   0.1183   1.34727
+ACC Cheb          5   0.2246   1.34725
+ACC Cheb          6   0.7963   1.36148
+
+
+========== Classic Magnus ==========
+
+-- Taylor exponential --
+Classic Taylor    1   5.5011   0.499175
+Classic Taylor    2   467.755   0.499175
+
+-- Chebyshev exponential --
+Classic Cheb      1   0.5871   1.34727
+Classic Cheb      2   488.41   1.34727

@@ -31,6 +31,8 @@ namespace matrix_ops {
     // РАЗЛОЖЕНИЕ ТЕЙЛОРА: Вычисляет exp(A) ≈ I + A + A² / 2!+ A³ / 3!+ ... + Aⁿ / n!
     CMatrix expm_taylor(const CMatrix& A, int N, int terms = 30);
 
+    CMatrix expm_chebyshev(const CMatrix& Omega, int N, int K);
+
     // Новые функции для разложения Магнуса
     double bernoulli_number(int j);
 
