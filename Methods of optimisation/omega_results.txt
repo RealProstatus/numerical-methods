@@ -1,0 +1,32 @@
+Timing and Error Results for Magnus Methods
+Format: Method  Omega_Order  Time_ms  Max_Error
+
+===== Recursive Magnus =====
+Recursive   1   2.1982   0.502476
+Recursive   2   2.7721   0.502476
+Recursive   3   2.6927   0.502476
+Recursive   4   4.9963   0.502476
+Recursive   5   6.9007   0.502476
+Recursive   6   6.873   0.502476
+Recursive   7   54.6488   0.502476
+Recursive   8   94.4201   0.502476
+Recursive   9   91.4452   0.502476
+Recursive   10   11.4538   0.502476
+Recursive   11   3382.11   0.502476
+Recursive   12   4528.2   0.502476
+Recursive   13   5253.66   0.502476
+Recursive   14   6356.34   0.502476
+Recursive   15   7397.15   0.502476
+
+===== Magnus ACC =====
+ACC         1   0.0922   0.502476
+ACC         2   0.1118   0.502476
+ACC         3   0.1933   0.502476
+ACC         4   0.2424   0.502476
+ACC         5   0.3237   0.502478
+ACC         6   0.8479   0.502478
+
+===== Classic Magnus =====
+Classic     1   1.1404   0.502476
+Classic     2   484.23   0.502476
+Classic     3   997554   0.502476

@@ -172,6 +172,47 @@ namespace matrix_ops {
         return S_samples;
     }
 
+    CMatrix matrix_exp_special(const CMatrix& A, int N, double dt)
+    {
+        // Копируем A, т.к. zheev разрушает input
+        CMatrix copy = mat_copy(A);
+
+        std::vector<double> w(N);  // Real eigenvalues
+        lapack_int info = LAPACKE_zheev(LAPACK_ROW_MAJOR, 'V', 'U', N,
+            reinterpret_cast<lapack_complex_double*>(copy.data()), N, w.data());
+
+        if (info != 0) {
+            std::cerr << "LAPACKE_zheev failed with info = " << info << std::endl;
+            return utils::eye(N);  // Возврат I на ошибке
+        }
+
+        // Создаём diag exp(-i w_k dt)
+        CMatrix exp_D((size_t)N * N, complexd(0.0, 0.0));
+        for (int k = 0; k < N; ++k) {
+            double phase = -w[k] * dt;
+            exp_D[utils::idx(k, k, N)] = complexd(std::cos(phase), std::sin(phase));
+        }
+
+        // temp = V * exp_D
+        CMatrix temp((size_t)N * N, complexd(0.0, 0.0));
+        matmul(copy, exp_D, temp, N);
+
+        // result = temp * V^\dagger = V exp_D V^\dagger
+        // V^\dagger = conj transpose of V
+        // Но поскольку V in row-major, для conj trans используем cblas_zgemm с CblasConjTrans
+        const complexd alpha(1.0, 0.0);
+        const complexd beta(0.0, 0.0);
+
+        CMatrix result((size_t)N * N, complexd(0.0, 0.0));
+        cblas_zgemm(CblasRowMajor, CblasNoTrans, CblasConjTrans,
+            N, N, N, &alpha,
+            temp.data(), N,
+            copy.data(), N, &beta,
+            result.data(), N);
+
+        return result;
+    }
+
     // === Helper: right-nested commutator ===
     //   [A1, [A2, [A3, [..., An]]]]
     // list — вектор A_samples, perm — перестановка (индексы, начиная с 1 или 0), N — размер
@@ -293,95 +334,5 @@ namespace matrix_ops {
         }
 
         return sum;
-    }
-
-
-// =========================================================
-// ============== Magnus–Chebyshev Method ==================
-// =========================================================
-
-    inline double BesselJ(int n, double x)
-    {
-#if __cplusplus >= 201703L
-        return std::cyl_bessel_j(n, x);
-#else
-        return jn(n, x);
-#endif
-    }
-
-    CMatrix expm_chebyshev(const CMatrix& Omega, int N, int M)
-    {
-        using namespace std;
-        using namespace utils;
-        using namespace matrix_ops;
-
-        const double hbar = 1.0;
-        const double h = 1.0; // если у тебя шаг времени delta_t != 1, передай его как параметр
-
-        // === 1️ Вычисляем собственные значения i * Omega (должна быть эрмитова) ===
-        vector<complexd> H(N * N);
-        complexd I(0.0, 1.0);
-        for (int k = 0; k < N * N; ++k)
-            H[k] = I * Omega[k]; // H = i * Omega
-
-        vector<double> w(N); // собственные значения
-        int info = LAPACKE_zheev(LAPACK_ROW_MAJOR, 'N', 'U', N,
-            reinterpret_cast<lapack_complex_double*>(H.data()), N, w.data());
-
-        if (info != 0) {
-            cerr << "LAPACKE_zheev failed, info=" << info << endl;
-            return eye(N);
-        }
-
-        double omega_min = w.front();
-        double omega_max = w.back();
-        double Delta = (omega_max - omega_min) / 2.0;
-        double beta = Delta + omega_min;
-        double R = h * Delta / hbar;
-
-        // === 2️ Строим масштабированную матрицу Omega_tilde ===
-        CMatrix Omega_hat = Omega;
-        complexd scale_hat = complexd(0.0, 1.0) * (hbar / h); // i * ℏ / h
-        mat_scale_inplace(Omega_hat, N, scale_hat);
-
-        CMatrix Id = eye(N);
-        CMatrix shift = mat_scale(Id, complexd(Delta + omega_min, 0.0));
-
-        CMatrix Omega_tilde = Omega_hat;
-        mat_sub(Omega_tilde, shift, Omega_tilde, N);          // Ω̂ - I(Δ+Ω_min)
-        mat_scale_inplace(Omega_tilde, N, complexd(1.0 / Delta, 0.0)); // / ΔΩ
-
-        // === 3️ Рекуррент Чебышева ===
-        CMatrix T0 = eye(N);
-        CMatrix T1 = Omega_tilde;
-
-        CMatrix result = mat_scale(T0, complexd(BesselJ(0, R), 0.0));
-
-        complexd iC(0.0, 1.0);
-        CMatrix tmp = mat_scale(T1, complexd(2.0, 0.0) * pow(iC, 1) * complexd(BesselJ(1, R), 0.0));
-        mat_add(result, tmp, result, N);
-
-        for (int n = 2; n <= M; ++n)
-        {
-            CMatrix Tn(N * N, complexd(0.0, 0.0));
-            CMatrix temp2(N * N, complexd(0.0, 0.0));
-            matmul(Omega_tilde, T1, temp2, N);
-            mat_scale_inplace(temp2, N, complexd(2.0, 0.0));
-            mat_sub(temp2, T0, Tn, N);
-
-            complexd coeff = complexd(2.0, 0.0) * pow(iC, n) * complexd(BesselJ(n, R), 0.0);
-            CMatrix term = mat_scale(Tn, coeff);
-            mat_add(result, term, result, N);
-
-            T0 = T1;
-            T1 = Tn;
-        }
-
-        // === 4️ Умножаем на фазовый множитель exp(-i * βh / ℏ) ===
-        complexd phase = exp(complexd(0.0, -1.0) * (beta * h / hbar));
-        mat_scale_inplace(result, N, phase);
-
-
-        return result;
     }
 }

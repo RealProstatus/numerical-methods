@@ -47,6 +47,8 @@ namespace matrix_ops {
     vector<CMatrix> compute_S_n_j(int n, int j, const vector<CMatrix>& Omega,
         const vector<CMatrix>& A_samples, int N);
 
+    CMatrix matrix_exp_special(const CMatrix& A, int N, double dt);
+
     CMatrix right_nested_comm(const vector<CMatrix>& A_samples, const vector<int>& perm, int N);
 
     CMatrix compute_Omega5_ACC(const vector<CMatrix>& A, int N);

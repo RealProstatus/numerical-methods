@@ -21,4 +21,7 @@ namespace utils
     void printMat(const CMatrix& A, int N, const string& name = "A");
     CMatrix eye(int N);
     void save_matrix(const CMatrix& mat, int N, const string& filename);
+    pair<CMatrix, CMatrix> generate_hermitian_pair(int N, double scaleA, double scaleB);
+    CMatrix analytic_omega(double h, const CMatrix& A, const CMatrix& B, int N);
+    std::pair<CMatrix, CMatrix> generate_hermitian_pair_dd(int N, double scaleA, double scaleB, double noncomm_factor, double diag_offset);
 }
