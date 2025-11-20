@@ -550,7 +550,7 @@ int main() {
         return m;
         };
 
-
+    //
     // =====================================================
     // ============= Recursive Magnus ======================
     // =====================================================
@@ -563,8 +563,8 @@ int main() {
     for (int n = 1; n <= 15; ++n) {
         auto t1 = chrono::high_resolution_clock::now();
 
-        CMatrix Omega_test = magnus_expansion(0.0, T_test, integration_dt,
-            N, H0, H_mod, eps0, W, n);
+        CMatrix Omega_test =
+            magnus_expansion(0.0, T_test, integration_dt, N, H0, H_mod, eps0, W, n);
         CMatrix U_test = matrix_ops::expm_taylor(Omega_test, N, 30);
 
         auto t2 = chrono::high_resolution_clock::now();
@@ -582,9 +582,10 @@ int main() {
     for (int n = 1; n <= 15; ++n) {
         auto t1 = chrono::high_resolution_clock::now();
 
-        CMatrix Omega_test = magnus_expansion(0.0, T_test, integration_dt,
-            N, H0, H_mod, eps0, W, n);
-        CMatrix U_test = matrix_ops::expm_chebyshev(Omega_test, N, 10);
+        CMatrix Omega_test =
+            magnus_expansion(0.0, T_test, integration_dt, N, H0, H_mod, eps0, W, n);
+        CMatrix U_test =
+            matrix_ops::expm_cheb(Omega_test, N, 10);   
 
         auto t2 = chrono::high_resolution_clock::now();
         double ms = chrono::duration<double, std::milli>(t2 - t1).count();
@@ -597,6 +598,7 @@ int main() {
     results_txt << "\n\n";
 
 
+    //
     // =====================================================
     // ============= ACC Magnus ============================
     // =====================================================
@@ -633,7 +635,8 @@ int main() {
 
         CMatrix Omega_ACC_test =
             magnus_ACC(A_samples_ACC_t, integration_dt, N, n);
-        CMatrix U_test = matrix_ops::expm_chebyshev(Omega_ACC_test, N, 10);
+        CMatrix U_test =
+            matrix_ops::expm_cheb(Omega_ACC_test, N, 10);  
 
         auto t2 = chrono::high_resolution_clock::now();
         double ms = chrono::duration<double, std::milli>(t2 - t1).count();
@@ -646,6 +649,7 @@ int main() {
     results_txt << "\n\n";
 
 
+    //
     // =====================================================
     // ============= Classic Magnus ========================
     // =====================================================
@@ -681,21 +685,19 @@ int main() {
         CMatrix Omega_classic_test =
             magnus_classic(0.0, T_test, integration_dt,
                 N, H0, H_mod, eps0, W, n);
-        CMatrix U_test = matrix_ops::expm_chebyshev(Omega_classic_test, N, 10);
+        CMatrix U_test =
+            matrix_ops::expm_cheb(Omega_classic_test, N, 10); // ★ исправлено
 
         auto t2 = chrono::high_resolution_clock::now();
         double ms = chrono::duration<double, std::milli>(t2 - t1).count();
         double err = max_error(U_test, U_exact_test);
 
         cout << "[Cheb] Classic Omega" << n << ": " << ms << " ms | err=" << err << endl;
-        results_txt << "Classic Cheb      " << n << "   "
-            << ms << "   " << err << "\n";
+        results_txt << "Classic Cheb      " << n << "   " << ms << "   " << err << "\n";
     }
 
     results_txt.close();
     cout << "\nResults saved >>> omega_results.txt\n" << endl;
-
-
 
     return 0;
 }
