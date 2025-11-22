@@ -326,12 +326,12 @@ namespace matrix_ops {
         int k = perm.size();
         if (k == 0) return CMatrix(N * N, complexd(0, 0));
 
-        // начинаем с последнего: A(t1)
-        CMatrix R = A_samples[0]; // считаем, что A_samples[0] соответствует t1
+        // Начинаем с последнего в perm
+        CMatrix R = A_samples[perm[k - 1]];
 
-        // идём по перестановке в обратном порядке
-        for (int i = k - 1; i >= 0; --i)
+        for (int i = k - 2; i >= 0; --i) {
             R = commutator(A_samples[perm[i]], R, N);
+        }
 
         return R;
     }
