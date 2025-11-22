@@ -121,79 +121,98 @@ namespace matrix_ops {
     {
         using namespace std;
 
-        // 1. Оценка спектрального радиуса (alpha)
-        // Так как Omega антиэрмитова, 1-нормы достаточно для оценки радиуса
-        double alpha = mat_one_norm(Omega, N);
+        // 1. Оценка спектрального радиуса
+        double norm = mat_one_norm(Omega, N);
 
-        if (alpha < 1e-14)
+        if (norm < 1e-14)
             return utils::eye(N);
 
-        // 2. Нормировка и поворот к Эрмитову виду
-        // Нам нужна матрица X с вещественными с.ч. в диапазоне [-1, 1].
-        // Так как Omega ~ -i*H, то X = i * Omega / alpha
-        CMatrix X = mat_copy(Omega);
-        // Умножаем на i/alpha
-        mat_scale_inplace(X, N, complexd(0.0, 1.0 / alpha));
+        // 2. Scaling and Squaring
+        int s = 0;
+        double scaled_norm = norm;
+        while (scaled_norm > 1.0) {
+            scaled_norm /= 2.0;
+            s++;
+        }
 
-        // 3. Инициализация рекурсии Чебышева
-        // T_0(X) = I
-        CMatrix Tk_prev = utils::eye(N);
-        // T_1(X) = X
-        CMatrix Tk_curr = mat_copy(X);
+        // A_scaled = Omega / 2^s
+        CMatrix A_scaled = mat_scale(Omega, complexd(1.0 / std::pow(2.0, s), 0.0));
+        double alpha = scaled_norm;
 
-        CMatrix result(N * N, complexd(0.0, 0.0));
+        // 3. Нормировка для рекурсии
+        // X = i * A_scaled / alpha
+        CMatrix X = mat_copy(A_scaled);
+        if (alpha > 1e-16) {
+            mat_scale_inplace(X, N, complexd(0.0, 1.0 / alpha));
+        }
 
-        // 4. Нулевой член разложения: J_0(alpha) * T_0
-        // Используем cyl_bessel_j (обычный Бессель), так как экспонента мнимая
+        // Инициализация рекурсии
+        CMatrix Tk_prev = utils::eye(N); // T_0
+        CMatrix Tk_curr = mat_copy(X);   // T_1
+
+        CMatrix res_scaled(N * N, complexd(0.0, 0.0));
+
+        // --- FIX START: Corrected Coefficients for (-i)^k ---
+
+        // Term k=0: J_0(alpha) * I
         double J0 = std::cyl_bessel_j(0, alpha);
+        for (size_t i = 0; i < res_scaled.size(); ++i)
+            res_scaled[i] += complexd(J0, 0.0) * Tk_prev[i];
 
-        for (size_t i = 0; i < result.size(); ++i)
-            result[i] += complexd(J0, 0.0) * Tk_prev[i];
-
-        // 5. Первый член разложения: 2 * (-i)^1 * J_1(alpha) * T_1
-        // (-i)^1 = -i
+        // Term k=1: 2 * (-i)^1 * J_1(alpha) * T_1
+        // (-i)^1 = -i. Coefficient is -2i * J1.
         double J1 = std::cyl_bessel_j(1, alpha);
-        complexd coeff1 = complexd(0.0, -2.0 * J1); // -2i * J1
 
-        for (size_t i = 0; i < result.size(); ++i)
-            result[i] += coeff1 * Tk_curr[i];
+        // ИСПРАВЛЕНО: Знак минус (-2.0)
+        complexd coeff1 = complexd(0.0, -2.0 * J1);
 
-        // 6. Рекурсия Чебышева для k >= 2
-        // T_{k+1} = 2 * X * T_k - T_{k-1}
+        for (size_t i = 0; i < res_scaled.size(); ++i)
+            res_scaled[i] += coeff1 * Tk_curr[i];
 
+        // Recursion k=2..M
         for (int k = 2; k <= M; ++k)
         {
             CMatrix Tk_next(N * N, complexd(0.0, 0.0));
 
-            // temp = X * Tk_curr
+            // T_{k+1} = 2 * X * T_k - T_{k-1}
             matmul(X, Tk_curr, Tk_next, N);
-            // next = 2 * temp
             mat_scale_inplace(Tk_next, N, complexd(2.0, 0.0));
-            // next = next - Tk_prev
             mat_sub(Tk_next, Tk_prev, Tk_next, N);
 
-            // Коэффициент: 2 * (-i)^k * J_k(alpha)
             double Jk = std::cyl_bessel_j(k, alpha);
 
-            // Вычисляем (-i)^k
+            if (std::abs(Jk) < 1e-18) {
+                // break; 
+            }
+
+            // ИСПРАВЛЕНО: Вычисляем (-i)^k
             complexd i_pow_k;
             int rem = k % 4;
-            if (rem == 0) i_pow_k = complexd(1.0, 0.0);
-            else if (rem == 1) i_pow_k = complexd(0.0, -1.0); // -i
-            else if (rem == 2) i_pow_k = complexd(-1.0, 0.0);
-            else i_pow_k = complexd(0.0, 1.0); // i
+            if (rem == 0) i_pow_k = complexd(1.0, 0.0);       // 1
+            else if (rem == 1) i_pow_k = complexd(0.0, -1.0); // -i (было i)
+            else if (rem == 2) i_pow_k = complexd(-1.0, 0.0); // -1
+            else i_pow_k = complexd(0.0, 1.0);                // i  (было -i)
 
             complexd coeff = complexd(2.0 * Jk, 0.0) * i_pow_k;
 
-            for (size_t i = 0; i < result.size(); ++i)
-                result[i] += coeff * Tk_next[i];
+            for (size_t i = 0; i < res_scaled.size(); ++i)
+                res_scaled[i] += coeff * Tk_next[i];
 
-            // Сдвиг для следующей итерации
             Tk_prev = Tk_curr;
             Tk_curr = Tk_next;
         }
+        // --- FIX END ---
 
-        return result;
+        // 4. Squaring
+        CMatrix final_res = res_scaled;
+        CMatrix temp(N * N, complexd(0.0, 0.0));
+
+        for (int i = 0; i < s; ++i) {
+            matmul(final_res, final_res, temp, N);
+            final_res = temp;
+        }
+
+        return final_res;
     }
 
 
@@ -223,46 +242,51 @@ namespace matrix_ops {
         return result;
     }
 
+    // ... (внутри MatrixOperations.cpp)
+
+// Изменяем реализацию
     vector<CMatrix> compute_S_n_j(int n, int j,
         const vector<CMatrix>& Omega,
-        const vector<CMatrix>& A_samples, int N)
+        const vector<CMatrix>& A_samples,
+        int N,
+        std::map<std::pair<int, int>, vector<CMatrix>>& cache) // <--- Аргумент по ссылке
     {
-        // 🔹 Статический кэш для уже вычисленных (n, j)
-        static std::map<std::pair<int, int>, vector<CMatrix>> cache;
+        // 1. УБРАЛИ static map внутри функции.
+        // Теперь мы используем cache, который нам передали.
 
         auto key = std::make_pair(n, j);
         auto it = cache.find(key);
         if (it != cache.end()) {
-            return it->second; // Возвращаем уже готовое значение
+            return it->second; // Возвращаем из переданного кэша
         }
 
         vector<CMatrix> S_samples(A_samples.size());
 
         if (j == 1) {
-            // S_n^(1)(t) = [Ω_(n-1), A(t)]
             for (size_t t = 0; t < A_samples.size(); ++t)
                 S_samples[t] = commutator(Omega[n - 1], A_samples[t], N);
         }
         else if (j == n - 1) {
-            // S_n^(n-1)(t) = ad_{Ω_1}^{n-1}(A(t))
             for (size_t t = 0; t < A_samples.size(); ++t)
                 S_samples[t] = compute_ad_Omega_k(Omega[1], A_samples[t], n - 1, N);
         }
         else {
-            // Общий случай: рекурсивное определение
             for (size_t t = 0; t < A_samples.size(); ++t) {
                 CMatrix sum((size_t)N * N, complexd(0.0, 0.0));
                 for (int m = 1; m <= n - j; ++m) {
-                    // 🔹 Рекурсивный вызов, но с кэшированием
+
+                    // 2. ВАЖНО: Проверяем кэш перед рекурсией (это уже есть выше, но здесь для ясности)
                     auto key_sub = std::make_pair(n - m, j - 1);
                     vector<CMatrix> S_nm_j1_samples;
+
                     auto it2 = cache.find(key_sub);
                     if (it2 != cache.end()) {
                         S_nm_j1_samples = it2->second;
                     }
                     else {
-                        S_nm_j1_samples = compute_S_n_j(n - m, j - 1, Omega, A_samples, N);
-                        cache[key_sub] = S_nm_j1_samples;
+                        // ПЕРЕДАЕМ cache ДАЛЬШЕ В РЕКУРСИЮ!
+                        S_nm_j1_samples = compute_S_n_j(n - m, j - 1, Omega, A_samples, N, cache);
+                        // cache сам обновится внутри, так как передан по ссылке
                     }
 
                     CMatrix comm = commutator(Omega[m], S_nm_j1_samples[t], N);
@@ -272,7 +296,7 @@ namespace matrix_ops {
             }
         }
 
-        // 🔹 Сохраняем в кэш перед возвратом
+        // Сохраняем в переданный кэш
         cache[key] = S_samples;
         return S_samples;
     }
@@ -326,12 +350,13 @@ namespace matrix_ops {
         int k = perm.size();
         if (k == 0) return CMatrix(N * N, complexd(0, 0));
 
-        // начинаем с последнего: A(t1)
-        CMatrix R = A_samples[0]; // считаем, что A_samples[0] соответствует t1
+        // 1. Начинаем с самого внутреннего элемента (последний индекс в perm)
+        CMatrix R = A_samples[perm.back()];
 
-        // идём по перестановке в обратном порядке
-        for (int i = k - 1; i >= 0; --i)
+        // 2. Идем от предпоследнего к началу
+        for (int i = k - 2; i >= 0; --i) {
             R = commutator(A_samples[perm[i]], R, N);
+        }
 
         return R;
     }

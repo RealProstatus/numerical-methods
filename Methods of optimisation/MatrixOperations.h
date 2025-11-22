@@ -2,6 +2,8 @@
 #include <complex>
 #include <vector>
 #include "Utils.h"
+#include <map>     // Обязательно для std::map
+#include <utility> // Обязательно для std::pair
 
 using namespace std;
 using complexd = complex<double>;
@@ -46,8 +48,11 @@ namespace matrix_ops {
     // Omega - вектор вычисленных ??...??, A_samples - выборки A(t) во времени
     // N - размер матриц
     // Возвращает: вектор матриц S_n^(j) для всех моментов времени
-    vector<CMatrix> compute_S_n_j(int n, int j, const vector<CMatrix>& Omega,
-        const vector<CMatrix>& A_samples, int N);
+    vector<CMatrix> compute_S_n_j(int n, int j,
+        const vector<CMatrix>& Omega,
+        const vector<CMatrix>& A_samples,
+        int N,
+        std::map<std::pair<int, int>, vector<CMatrix>>& cache);
 
     CMatrix matrix_exp_special(const CMatrix& A, int N, double dt);
 

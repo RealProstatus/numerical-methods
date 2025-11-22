@@ -1,0 +1,21 @@
+Method Order MaxElemDiff SpectralDiff
+Recursive 1 4.33681e-18 4.33689e-18
+Recursive 2 4.33681e-18 4.33689e-18
+Recursive 3 4.33681e-18 4.33689e-18
+Recursive 4 4.33681e-18 4.33689e-18
+Recursive 5 4.33681e-18 4.33689e-18
+Recursive 6 4.33681e-18 4.33689e-18
+Recursive 7 4.33681e-18 4.33689e-18
+Recursive 8 4.33681e-18 4.33689e-18
+Recursive 9 4.33681e-18 4.33689e-18
+Recursive 10 4.33681e-18 4.33689e-18
+
+Classic 1 1.12757e-17 1.12758e-17
+Classic 2 1.12757e-17 1.12758e-17
+
+ACC 1 1.12757e-17 1.12758e-17
+ACC 2 1.12757e-17 1.12758e-17
+ACC 3 1.12757e-17 1.12758e-17
+ACC 4 0 0
+ACC 5 0 0
+ACC 6 0 0
