@@ -440,4 +440,36 @@ namespace matrix_ops {
 
         return sum;
     }
+    
+    CMatrix dagger(const CMatrix& A, int N)
+    {
+        CMatrix Adag(N * N);
+        for (int i = 0; i < N; ++i)
+            for (int j = 0; j < N; ++j)
+            {
+                // транспонирование + комплексное сопряжение
+                Adag[utils::idx(i, j, N)] = std::conj(A[utils::idx(j, i, N)]);
+            }
+        return Adag;
+    }
+
+    bool is_unitary(const CMatrix& U, int N, double tol)
+    {
+        // 1. U^\dagger
+        CMatrix Ud = dagger(U, N);
+
+        // 2. M = U^\dagger * U
+        CMatrix M(N * N, complexd(0, 0));
+        matmul(Ud, U, M, N);
+
+        // 3. E = M - I
+        CMatrix I = utils::eye(N);
+        CMatrix E(N * N);
+        mat_sub(M, I, E, N);
+
+        // 4. ||E||_1 < tol ?
+        double err = mat_one_norm(E, N);
+
+        return (err < tol);
+    }
 }
