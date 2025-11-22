@@ -7,7 +7,8 @@ namespace utils
         CMatrix matrix((size_t)N * N, { 0.0,0.0 });
 
         random_device rd;
-        mt19937 gen(rd());
+        //mt19937 gen(rd());
+        mt19937 gen(0);
         uniform_real_distribution<double> dist(-1.0, 1.0);
 
         for (int i = 0; i < N; i++) {

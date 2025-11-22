@@ -449,21 +449,21 @@ CMatrix magnus_classic(
 //        // compute via expansion built from samples
 //        CMatrix Om = magnus_expansion_from_samples(samples, dt, N, n);
 //        double err = max_err(Om);
-//        cout << "Recursive Magnus Omega" << n << "  err = " << err << "\n";
+//        cout << "Recursive Magnus Omega" << n << "  err = " << max_err1 << "\n";
 //    }
 //
 //    // 2) ACC Magnus (uses samples directly)
 //    for (int n = 1; n <= 6; ++n) {
 //        CMatrix Om = magnus_ACC(samples, dt, N, n);
 //        double err = max_err(Om);
-//        cout << "ACC Magnus Omega" << n << "  err = " << err << "\n";
+//        cout << "ACC Magnus Omega" << n << "  err = " << max_err1 << "\n";
 //    }
 //
 //    // 3) Classic Magnus from samples
 //    for (int n = 1; n <= 2; ++n) {
 //        CMatrix Om = magnus_classic_from_samples(samples, dt, N, n);
 //        double err = max_err(Om);
-//        cout << "Classic Magnus Omega" << n << "  err = " << err << "\n";
+//        cout << "Classic Magnus Omega" << n << "  err = " << max_err1 << "\n";
 //    }
 //
 //    cout << "========================================\n\n";
@@ -505,6 +505,8 @@ int main() {
 
     CMatrix H0 = generate_hermitian_matrix(N, 5.0);
     CMatrix H_mod = generate_hermitian_matrix(N, 1.0);
+
+    std::cout << "Norm of H matrix:" << mat_one_norm(H0, 10) << std::endl;
 
     save_matrix(H0, N, "H0_matrix.txt");
     save_matrix(H_mod, N, "H_mod_matrix.txt");
@@ -568,7 +570,7 @@ int main() {
     mat_sub(U_rk, U_magnus, diff_rk_magnus, N);
     double max_diff_rk_magnus = 0.0;
     for (auto& v : diff_rk_magnus) max_diff_rk_magnus = max(max_diff_rk_magnus, abs(v));
-    cout << "Max diff: RK vs Recursive Magnus = " << max_diff_rk_magnus << endl;
+    //cout << "Max diff: RK vs Recursive Magnus = " << max_diff_rk_magnus << endl;
 
     // Recursive vs ACC
     CMatrix diff_magnus_ACC((size_t)N * N, complexd(0.0, 0.0));
@@ -605,13 +607,13 @@ int main() {
     // ИЗМЕНЕНИЕ 1: Увеличиваем интервал времени, чтобы коммутаторы стали значимыми
     // При T = 0.01 вклад коммутаторов слишком мал и не виден.
     // При T = 0.5 будет видно, как Omega_2 и Omega_4 исправляют ошибку.
-    const double T_test = 0.5;
+    const double T_test = 0.05;
 
     // --- Эталонное решение (RK4 с мелким шагом) ---
     CMatrix U_exact_test = utils::eye(N);
 
     // Разбиваем интервал на 5000 шагов для высокой точности эталона
-    int rk_substeps = 5000;
+    int rk_substeps = 500000;
     double rk_dt = T_test / rk_substeps;
 
     for (int s = 0; s < rk_substeps; ++s) {
@@ -623,6 +625,9 @@ int main() {
 
         U_exact_test = runge_kutta_simple::runge_kutta_step(H_t, U_exact_test, rk_dt, N);
     }
+
+    save_matrix(U_exact_test, N, "U_exact_test.txt");
+
 
     cout << "Exact reference computed (T=" << T_test << ", steps=" << rk_substeps << ")." << endl;
 
@@ -636,6 +641,10 @@ int main() {
             m = max(m, abs(A[i] - B[i]));
         return m;
         };
+
+    CMatrix diff = eye(N);
+
+    double max_err1;
 
     //
     // ============= Recursive Magnus ======================
@@ -656,8 +665,19 @@ int main() {
         double ms = chrono::duration<double, std::milli>(t2 - t1).count();
         double err = max_error(U_test, U_exact_test);
 
-        cout << "[Taylor] Omega" << n << ": " << ms << " ms | err=" << err << endl;
-        results_txt << "Recursive Taylor    " << n << "    " << ms << "    " << err << "\n";
+        cout << "[Taylor] Omega" << n << ": " << ms << " ms | err=" << max_err1 << endl;
+        
+        bool unitary = is_unitary(U_test, N);
+        cout << "    Unitary? " << (unitary ? "YES" : "NO") << endl;
+
+        mat_sub(U_test, U_exact_test, diff, 10);
+
+        max_err1 = mat_one_norm(diff, 10);
+
+        save_matrix(U_test, N, "U_Recursive_Magnus_Taylor.txt");
+
+
+        results_txt << "Recursive Taylor    " << n << "    " << ms << "    " << max_err1 << "\n";
     }
     results_txt << "\n";
 
@@ -678,8 +698,18 @@ int main() {
         double ms = chrono::duration<double, std::milli>(t2 - t1).count();
         double err = max_error(U_test, U_exact_test);
 
-        cout << "[Cheb] Omega" << n << ": " << ms << " ms | err=" << err << endl;
-        results_txt << "Recursive Cheb      " << n << "    " << ms << "    " << err << "\n";
+        cout << "[Cheb] Omega" << n << ": " << ms << " ms | err=" << max_err1 << endl;
+
+        bool unitary = is_unitary(U_test, N);
+        cout << "    Unitary? " << (unitary ? "YES" : "NO") << endl;
+
+        mat_sub(U_test, U_exact_test, diff, 10);
+
+        max_err1 = mat_one_norm(diff, 10);
+
+        save_matrix(U_test, N, "U_Recursive_Magnus_Chebyshev.txt");
+
+        results_txt << "Recursive Cheb      " << n << "    " << ms << "    " << max_err1 << "\n";
     }
     results_txt << "\n\n";
 
@@ -706,8 +736,18 @@ int main() {
         double ms = chrono::duration<double, std::milli>(t2 - t1).count();
         double err = max_error(U_test, U_exact_test);
 
-        cout << "[Taylor] ACC Omega" << n << ": " << ms << " ms | err=" << err << endl;
-        results_txt << "ACC Taylor          " << n << "    " << ms << "    " << err << "\n";
+        cout << "[Taylor] ACC Omega" << n << ": " << ms << " ms | err=" << max_err1 << endl;
+
+        bool unitary = is_unitary(U_test, N);
+        cout << "    Unitary? " << (unitary ? "YES" : "NO") << endl;
+
+        mat_sub(U_test, U_exact_test, diff, 10);
+
+        max_err1 = mat_one_norm(diff, 10);
+
+        save_matrix(U_test, N, "U_ACC_Magnus_Taylor.txt");
+
+        results_txt << "ACC Taylor          " << n << "    " << ms << "    " << max_err1 << "\n";
     }
     results_txt << "\n";
 
@@ -726,8 +766,18 @@ int main() {
         double ms = chrono::duration<double, std::milli>(t2 - t1).count();
         double err = max_error(U_test, U_exact_test);
 
-        cout << "[Cheb] ACC Omega" << n << ": " << ms << " ms | err=" << err << endl;
-        results_txt << "ACC Cheb            " << n << "    " << ms << "    " << err << "\n";
+        cout << "[Cheb] ACC Omega" << n << ": " << ms << " ms | err=" << max_err1 << endl;
+
+        bool unitary = is_unitary(U_test, N);
+        cout << "    Unitary? " << (unitary ? "YES" : "NO") << endl;
+
+        mat_sub(U_test, U_exact_test, diff, 10);
+
+        max_err1 = mat_one_norm(diff, 10);
+
+        save_matrix(U_test, N, "ACC_Magnus_C.txt");
+
+        results_txt << "ACC Cheb            " << n << "    " << ms << "    " << max_err1 << "\n";
     }
     results_txt << "\n\n";
 
@@ -752,8 +802,18 @@ int main() {
         double ms = chrono::duration<double, std::milli>(t2 - t1).count();
         double err = max_error(U_test, U_exact_test);
 
-        cout << "[Taylor] Classic Omega" << n << ": " << ms << " ms | err=" << err << endl;
-        results_txt << "Classic Taylor      " << n << "    " << ms << "    " << err << "\n";
+        cout << "[Taylor] Classic Omega" << n << ": " << ms << " ms | err=" << max_err1 << endl;
+
+        bool unitary = is_unitary(U_test, N);
+        cout << "    Unitary? " << (unitary ? "YES" : "NO") << endl;
+
+        mat_sub(U_test, U_exact_test, diff, 10);
+
+        max_err1 = mat_one_norm(diff, 10);
+
+        save_matrix(U_test, N, "Classic_Magnus_Taylor.txt");
+
+        results_txt << "Classic Taylor      " << n << "    " << ms << "    " << max_err1 << "\n";
     }
     results_txt << "\n";
 
@@ -773,8 +833,18 @@ int main() {
         double ms = chrono::duration<double, std::milli>(t2 - t1).count();
         double err = max_error(U_test, U_exact_test);
 
-        cout << "[Cheb] Classic Omega" << n << ": " << ms << " ms | err=" << err << endl;
-        results_txt << "Classic Cheb        " << n << "    " << ms << "    " << err << "\n";
+        cout << "[Cheb] Classic Omega" << n << ": " << ms << " ms | err=" << max_err1 << endl;
+
+        bool unitary = is_unitary(U_test, N);
+        cout << "    Unitary? " << (unitary ? "YES" : "NO") << endl;
+
+        mat_sub(U_test, U_exact_test, diff, 10);
+
+        max_err1 = mat_one_norm(diff, 10);
+
+        save_matrix(U_test, N, "Classic_Magnus_Chebyshev.txt");
+
+        results_txt << "Classic Cheb        " << n << "    " << ms << "    " << max_err1 << "\n";
     }
 
     results_txt.close();

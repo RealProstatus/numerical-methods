@@ -55,4 +55,7 @@ namespace matrix_ops {
 
     CMatrix compute_Omega5_ACC(const vector<CMatrix>& A, int N);
     CMatrix compute_Omega6_ACC(const vector<CMatrix>& A, int N);
+
+    CMatrix dagger(const CMatrix& A, int N);
+    bool is_unitary(const CMatrix& U, int N, double tol = 1e-10);
 }
