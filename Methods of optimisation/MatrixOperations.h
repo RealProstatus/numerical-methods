@@ -61,6 +61,19 @@ namespace matrix_ops {
     CMatrix compute_Omega5_ACC(const vector<CMatrix>& A, int N);
     CMatrix compute_Omega6_ACC(const vector<CMatrix>& A, int N);
 
+    CMatrix compute_Omega_3_14(
+        const CMatrix& H0,
+        const CMatrix& Hmod,
+        double h,
+        double f_t1,
+        double f_half,
+        double fp_half,
+        double f2_half,
+        double f2_t1,
+        int N);
+
     CMatrix dagger(const CMatrix& A, int N);
     bool is_unitary(const CMatrix& U, int N, double tol = 1e-10);
+    double max_element_diff(const CMatrix& A, const CMatrix& B, int N);
+    double max_eigenvalue_modulus_hermitian(const CMatrix& M, int N);
 }
