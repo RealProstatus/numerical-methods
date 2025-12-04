@@ -76,6 +76,4 @@ namespace matrix_ops {
     bool is_unitary(const CMatrix& U, int N, double tol = 1e-10);
     double max_element_diff(const CMatrix& A, const CMatrix& B, int N);
     double max_eigenvalue_modulus_hermitian(const CMatrix& M, int N);
-
-    CMatrix expm_pade(const CMatrix& A, int N, int p = 3, int q = 3);
 }
