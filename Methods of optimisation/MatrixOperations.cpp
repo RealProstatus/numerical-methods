@@ -10,6 +10,7 @@
 
 #include <Eigen/Dense>
 #include <unsupported/Eigen/MatrixFunctions>
+#include <Eigen/IterativeLinearSolvers>
 
 namespace matrix_ops {
     // 1. Базовые матричные операции
