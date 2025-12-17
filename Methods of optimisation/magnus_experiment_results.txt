@@ -3,7 +3,7 @@ EXPERIMENT 1: Comparison of Omega Matrix Calculation Accuracy (H = const)
 N=10, dt=1.000000000000e-05
 Reference: Omega_ref = -i * H * dt
 -----------------------------------------------------------------
-Method | K | Max Element Diff | Max Eig Diff
+Method | K | Max Element Diff | Max Eig Diff | Time (ms)
 -----------------------------------------------------------------
 Classic | 1 | 1.301042606983e-17 | 5.335348504042e-20
 Classic | 2 | 1.301042606983e-17 | 5.334933693066e-20
@@ -75,7 +75,7 @@ EXPERIMENT 3: Accuracy of exp(Omega) using Chebyshev method
 N=10, dt=1.0000000000000001e-05
 Reference: exp(Omega) = Taylor(30 terms)
 -----------------------------------------------------------------
-Method | K/M | Max Elem Diff | Max Eig Diff
+Method | K/M | Max Elem Diff | Max Eig Diff | Time (ms)
 -----------------------------------------------------------------
 Taylor | 1 | 1.7400253389028627e-05 | 1.7408535351453858e-05
 Taylor | 2 | 3.4216753269411447e-08 | 5.6293768544419687e-10
