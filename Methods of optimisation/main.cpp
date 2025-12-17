@@ -532,56 +532,83 @@ int main() {
     results_txt << "N=" << N << ", dt=" << dt << "\n";
     results_txt << "Reference: Omega_ref = -i * H * dt\n";
     results_txt << "-----------------------------------------------------------------\n";
-    results_txt << "Method | K | Max Element Diff | Max Eig Diff\n";
+    results_txt << "Method | K | Max Element Diff | Max Eig Diff | Time (ms)\n";
     results_txt << "-----------------------------------------------------------------\n";
 
     // --- 1. Classic Magnus Expansion ---
-    int max_classic_order = 4;
+    int max_classic_order = 2;
     for (int k = 1; k <= max_classic_order; ++k) {
+        auto start = chrono::high_resolution_clock::now();
+
         // magnus_classic takes H0, H_mod and generates samples internally with -i factor
         CMatrix Omega_calc = magnus_classic(0.0, T_int, integration_dt, N, H0_input, H_mod_zero, eps0, W, k);
+
+        auto end = chrono::high_resolution_clock::now();
+        auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
+        double time_ms = duration.count() / 1000.0;
+
         CMatrix diff(N * N, complexd(0.0, 0.0));
         matrix_ops::mat_sub(Omega_calc, Omega_ref_dt, diff, N);
 
         double max_el_diff = matrix_ops::max_element_diff(Omega_calc, Omega_ref_dt, N);
         double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
 
-        results_txt << "Classic | " << k << " | " << max_el_diff << " | " << max_eig_diff << "\n";
+        results_txt << "Classic | " << k << " | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
     }
 
     // --- 2. Diploma Expansion (ACC) ---
     int max_acc_order = 5;
     for (int k = 1; k <= max_acc_order; ++k) {
+        auto start = chrono::high_resolution_clock::now();
+
         CMatrix Omega_calc = magnus_ACC(A_samples, integration_dt, N, k);
+
+        auto end = chrono::high_resolution_clock::now();
+        auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
+        double time_ms = duration.count() / 1000.0;
+
         CMatrix diff(N * N, complexd(0.0, 0.0));
         matrix_ops::mat_sub(Omega_calc, Omega_ref_dt, diff, N);
 
         double max_el_diff = matrix_ops::max_element_diff(Omega_calc, Omega_ref_dt, N);
         double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
 
-        results_txt << "ACC | " << k << " | " << max_el_diff << " | " << max_eig_diff << "\n";
+        results_txt << "ACC | " << k << " | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
     }
 
     // --- 3. Recursive Expansion ---
     int max_recursive_order = 15;
     for (int k = 1; k <= max_recursive_order; ++k) {
+        auto start = chrono::high_resolution_clock::now();
+
         CMatrix Omega_calc = magnus_expansion(0.0, T_int, integration_dt, N, H0_input, H_mod_zero, eps0, W, k);
+
+        auto end = chrono::high_resolution_clock::now();
+        auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
+        double time_ms = duration.count() / 1000.0;
+
         CMatrix diff(N * N, complexd(0.0, 0.0));
         matrix_ops::mat_sub(Omega_calc, Omega_ref_dt, diff, N);
 
         double max_el_diff = matrix_ops::max_element_diff(Omega_calc, Omega_ref_dt, N);
         double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
 
-        results_txt << "Recursive | " << k << " | " << max_el_diff << " | " << max_eig_diff << "\n";
+        results_txt << "Recursive | " << k << " | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
     }
 
     // --- 4. Formula 3.14 (Special 4th order) ---
     //  - Formula 3.14 from dissertation
     {
+        auto start = chrono::high_resolution_clock::now();
+
         // magnus_3_14 sums H0 terms directly. To get Omega = -i*H*dt, 
         // we must pass H0_anti_herm (-i*H) because the function doesn't add -i itself.
         // H_mod is zero, so commutators are zero.
         CMatrix Omega_314 = magnus_3_14(0.0, T_int, integration_dt, N, H0_anti_herm, H_mod_zero, eps0, W);
+
+        auto end = chrono::high_resolution_clock::now();
+        auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
+        double time_ms = duration.count() / 1000.0;
 
         CMatrix diff(N * N, complexd(0.0, 0.0));
         matrix_ops::mat_sub(Omega_314, Omega_ref_dt, diff, N);
@@ -590,7 +617,7 @@ int main() {
         double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
 
         // K=4 is the theoretical order of this method
-        results_txt << "Formula 3.14 | 4 | " << max_el_diff << " | " << max_eig_diff << "\n";
+        results_txt << "Formula 3.14 | 4 | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
     }
 
     // =====================================================================
@@ -642,15 +669,15 @@ int main() {
         results_txt << "Taylor | " << std::setprecision(16) << k_taylor << " | " << max_el_diff << " | " << mat_one_norm_diff << "\n";
     }
 
-// =====================================================================
-// ============= EXPERIMENT 3: Chebyshev exp(Omega) Accuracy ============
-// =====================================================================
+    // =====================================================================
+    // ============= EXPERIMENT 3: Chebyshev exp(Omega) Accuracy ============
+    // =====================================================================
     results_txt << "\n=================================================================\n";
     results_txt << "EXPERIMENT 3: Accuracy of exp(Omega) using Chebyshev method\n";
     results_txt << "N=" << N << ", dt=" << dt << "\n";
     results_txt << "Reference: exp(Omega) = Taylor(30 terms)\n";
     results_txt << "-----------------------------------------------------------------\n";
-    results_txt << "Method | K/M | Max Elem Diff | Max Eig Diff\n";
+    results_txt << "Method | K/M | Max Elem Diff | Max Eig Diff | Time (ms)\n";
     results_txt << "-----------------------------------------------------------------\n";
 
     // 1. Omega for full interval dt (same as in experiment 1)
@@ -662,7 +689,13 @@ int main() {
     // --------------- Taylor comparison (K = 1..10) --------------------
     for (int k = 1; k <= 10; k++)
     {
+        auto start = chrono::high_resolution_clock::now();
+
         CMatrix U_taylor = matrix_ops::expm_taylor(Omega_dt, N, k);
+
+        auto end = chrono::high_resolution_clock::now();
+        auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
+        double time_ms = duration.count() / 1000.0;
 
         CMatrix diff(N * N, complexd(0.0, 0.0));
         matrix_ops::mat_sub(U_taylor, U_ref, diff, N);
@@ -672,13 +705,19 @@ int main() {
 
         results_txt << "Taylor | " << k << " | "
             << max_el_diff << " | "
-            << max_eig_diff << "\n";
+            << max_eig_diff << " | " << time_ms << "\n";
     }
 
     // --------------- Chebyshev comparison (M = 1..25) --------------------
     for (int M = 1; M <= 25; M++)
     {
+        auto start = chrono::high_resolution_clock::now();
+
         CMatrix U_cheb = expm_cheb(Omega_dt, N, M);
+
+        auto end = chrono::high_resolution_clock::now();
+        auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
+        double time_ms = duration.count() / 1000.0;
 
         CMatrix diff(N * N, complexd(0.0, 0.0));
         matrix_ops::mat_sub(U_cheb, U_ref, diff, N);
@@ -688,7 +727,7 @@ int main() {
 
         results_txt << "Cheb | " << M << " | "
             << max_el_diff << " | "
-            << max_eig_diff << "\n";
+            << max_eig_diff << " | " << time_ms << "\n";
     }
 
     results_txt << "-----------------------------------------------------------------\n";
