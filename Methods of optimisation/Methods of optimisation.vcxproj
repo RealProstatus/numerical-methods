@@ -111,6 +111,7 @@
       <Optimization>MaxSpeed</Optimization>
       <OpenMP>GenerateParallelCode</OpenMP>
       <CCppSupport>Cpp17Support</CCppSupport>
+      <AdditionalOptions>-march=native -mtune=native %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

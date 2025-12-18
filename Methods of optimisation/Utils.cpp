@@ -1,5 +1,8 @@
 ﻿#include "Utils.h"
+#include "MatrixOperations.h"
 #include <iomanip>
+#include <tuple>
+#include <random>
 
 namespace utils
 {
@@ -162,5 +165,68 @@ namespace utils
         CMatrix B = gen_one(scaleB, diag_offset, true);
 
         return { A, B };
+    }
+
+    // Generate spectrally decomposable matrix H = V*D*V^(-1) with given condition number
+    std::tuple<CMatrix, CMatrix, CMatrix> generate_spectral_matrix(int N, double condition_number, double diag_dominance) {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<double> dist(-1.0, 1.0);
+
+        // Generate random unitary matrix V (simplified as orthogonal matrix)
+        CMatrix V(N * N, complexd(0.0, 0.0));
+        for (int i = 0; i < N; ++i) {
+            for (int j = 0; j < N; ++j) {
+                double re = dist(gen);
+                double im = dist(gen);
+                V[idx(i, j, N)] = complexd(re, im);
+            }
+        }
+
+        // Make V orthogonal (simplified Gram-Schmidt)
+        for (int i = 0; i < N; ++i) {
+            // Normalize column i
+            complexd norm = 0.0;
+            for (int k = 0; k < N; ++k) {
+                norm += V[idx(k, i, N)] * conj(V[idx(k, i, N)]);
+            }
+            norm = sqrt(norm);
+            for (int k = 0; k < N; ++k) {
+                V[idx(k, i, N)] /= norm;
+            }
+
+            // Orthogonalize remaining columns
+            for (int j = i + 1; j < N; ++j) {
+                complexd dot = 0.0;
+                for (int k = 0; k < N; ++k) {
+                    dot += conj(V[idx(k, i, N)]) * V[idx(k, j, N)];
+                }
+                for (int k = 0; k < N; ++k) {
+                    V[idx(k, j, N)] -= dot * V[idx(k, i, N)];
+                }
+            }
+        }
+
+        // Generate diagonal matrix D with eigenvalues spanning the condition number range
+        CMatrix D(N * N, complexd(0.0, 0.0));
+        double lambda_max = diag_dominance;
+        double lambda_min = lambda_max / condition_number;
+
+        // Create logarithmically spaced eigenvalues
+        for (int i = 0; i < N; ++i) {
+            double ratio = static_cast<double>(i) / (N - 1);
+            double lambda = lambda_min * pow(lambda_max / lambda_min, ratio);
+            D[idx(i, i, N)] = complexd(lambda, 0.0);
+        }
+
+        // Compute H = V * D * V^(-1)
+        // For simplicity, since V is unitary, V^(-1) = V^H (Hermitian conjugate)
+        CMatrix Vh = matrix_ops::dagger(V, N);
+        CMatrix VD(N * N, complexd(0.0, 0.0));
+        matrix_ops::matmul(V, D, VD, N);
+        CMatrix H(N * N, complexd(0.0, 0.0));
+        matrix_ops::matmul(VD, Vh, H, N);
+
+        return std::make_tuple(H, V, D);
     }
 }

@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import re
+import sys
+import os
 
 def safe_log_values(values, min_val=1e-20):
     """Безопасное преобразование значений для логарифмической шкалы"""
@@ -16,8 +18,16 @@ def safe_log_values(values, min_val=1e-20):
 
 def parse_experiment1_results(filename):
     """Парсинг результатов эксперимента 1 из файла magnus_experiment_results.txt"""
-    with open(filename, 'r') as f:
-        content = f.read()
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except UnicodeDecodeError:
+        # Если UTF-8 не работает, пробуем cp1251 (Windows)
+        with open(filename, 'r', encoding='cp1251') as f:
+            content = f.read()
+
+    print(f"File read, length: {len(content)} characters")
+    print(f"First 200 characters: {content[:200]}")
 
     results = {}
 
@@ -57,7 +67,7 @@ def parse_experiment1_results(filename):
 def plot_experiment1(results):
     """Графики для эксперимента 1: Сравнение методов Магнуса"""
     if not results:
-        print("Нет данных для эксперимента 1")
+        print("No data for experiment 1")
         return
 
     # Создаем фигуру
@@ -202,18 +212,18 @@ def plot_experiment1(results):
         for bar, val in zip(bars, data):
             height = bar.get_height()
             ax6.text(bar.get_x() + bar.get_width()/2., height*1.05,
-                    f'{val:.2e}', ha='center', va='bottom', fontsize=7, rotation=90)
+                    f'{val:.1e}', ha='center', va='bottom', fontsize=7, rotation=90)
 
     plt.tight_layout()
     plt.savefig('experiment1_analysis.png', dpi=150, bbox_inches='tight', facecolor='white')
-    print("Сохранен experiment1_analysis.png")
+    print("Saved experiment1_analysis.png")
     plt.show()
 
-    # Дополнительная статистика
-    print("\n=== Статистика Эксперимента 1 ===")
+    # Additional statistics
+    print("\n=== Experiment 1 Statistics ===")
     for method, data in results.items():
         print(f"\n{method}:")
-        print(f"  Порядок K: {data['k']}")
+        print(f"  Order K: {data['k']}")
         print(".2e")
         print(".2e")
         print(".2f")
@@ -221,28 +231,44 @@ def plot_experiment1(results):
         print(".2e")
 
 def main():
-    """Основная функция"""
-    print("Анализ результатов Эксперимента 1: Методы Магнуса")
+    print("Analysis of Experiment 1 results: Magnus methods")
     print("=" * 50)
 
-    filename = "magnus_experiment_results.txt"
+    # Get filename from command line arguments or use default
+    if len(sys.argv) > 1:
+        filename = sys.argv[1]
+    else:
+        filename = "magnus_experiment_results.txt"
+
+    print(f"Current directory: {os.getcwd()}")
+    print(f"Files in directory: {os.listdir('.')}")
+    print(f"Looking for file: {filename}")
+    print(f"Full path: {os.path.abspath(filename)}")
+    print(f"File exists: {os.path.exists(filename)}")
+
+    if not os.path.exists(filename):
+        print("\nFile not found! Possible solutions:")
+        print("1. Run script from Methods of optimisation directory")
+        print("2. Specify full path: python graph_experiment_1.py /path/to/file")
+        print("3. Use run_graphs.bat")
+        return
 
     try:
         results = parse_experiment1_results(filename)
 
         if results:
-            print(f"Найдено {len(results)} методов для анализа:")
+            print(f"Found {len(results)} methods for analysis:")
             for method in results.keys():
                 print(f"  - {method}")
 
             plot_experiment1(results)
         else:
-            print("Данные эксперимента 1 не найдены в файле!")
+            print("Experiment 1 data not found in file!")
 
     except FileNotFoundError:
-        print(f"Ошибка: файл {filename} не найден!")
+        print(f"Error: file {filename} not found!")
     except Exception as e:
-        print(f"Ошибка: {e}")
+        print(f"Error: {e}")
         import traceback
         traceback.print_exc()
 

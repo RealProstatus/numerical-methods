@@ -58,7 +58,7 @@ def parse_experiment2_results(filename):
 def plot_experiment2(results):
     """Графики для эксперимента 2: Сравнение методов экспоненцирования"""
     if not results:
-        print("Нет данных для эксперимента 2")
+        print("No data for experiment 2")
         return
 
     # Создаем фигуру
@@ -152,7 +152,7 @@ def plot_experiment2(results):
 
     plt.tight_layout()
     plt.savefig('experiment2_analysis.png', dpi=150, bbox_inches='tight', facecolor='white')
-    print("Сохранен experiment2_analysis.png")
+    print("Saved experiment2_analysis.png")
     plt.show()
 
     # Дополнительные графики: компромисс точность-время
@@ -229,13 +229,13 @@ def plot_experiment2(results):
 
     plt.tight_layout()
     plt.savefig('experiment2_efficiency.png', dpi=150, bbox_inches='tight', facecolor='white')
-    print("Сохранен experiment2_efficiency.png")
+    print("Saved experiment2_efficiency.png")
     plt.show()
 
-    # Финальная статистика
-    print("\n=== Статистика Эксперимента 2 ===")
-    print("Сравнение методов вычисления exp(Ω) для анти-эрмитовой матрицы Ω = -i×H")
-    print("Эталон: Eigen Pade approximation")
+    # Final statistics
+    print("\n=== Experiment 2 Statistics ===")
+    print("Matrix exponentiation methods comparison for anti-Hermitian matrix Ω = -i×H")
+    print("Reference: Eigen Pade approximation")
 
     for method, data in results.items():
         if not data['param']:
@@ -244,7 +244,7 @@ def plot_experiment2(results):
         print(f"\n{method}:")
         if method in ['Taylor', 'Chebyshev']:
             param_name = 'K' if method == 'Taylor' else 'M'
-            print(f"  {param_name}: от {min(data['param'])} до {max(data['param'])}")
+            print(f"  {param_name}: from {min(data['param'])} to {max(data['param'])}")
 
         print(".2e")
         print(".2e")
@@ -257,8 +257,7 @@ def plot_experiment2(results):
         print(".2e")
 
 def main():
-    """Основная функция"""
-    print("Анализ результатов Эксперимента 2: Методы экспоненцирования")
+    print("Analysis of Experiment 2 results: Matrix exponentiation methods")
     print("=" * 55)
 
     filename = "experiment2_results.txt"
@@ -267,18 +266,18 @@ def main():
         results = parse_experiment2_results(filename)
 
         if results:
-            print(f"Найдено {len(results)} методов для анализа:")
+            print(f"Found {len(results)} methods for analysis:")
             for method in results.keys():
                 print(f"  - {method}")
 
             plot_experiment2(results)
         else:
-            print("Данные эксперимента 2 не найдены в файле!")
+            print("Experiment 2 data not found in file!")
 
     except FileNotFoundError:
-        print(f"Ошибка: файл {filename} не найден!")
+        print(f"Error: file {filename} not found!")
     except Exception as e:
-        print(f"Ошибка: {e}")
+        print(f"Error: {e}")
         import traceback
         traceback.print_exc()
 

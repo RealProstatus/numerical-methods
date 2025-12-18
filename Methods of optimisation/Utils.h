@@ -24,4 +24,7 @@ namespace utils
     pair<CMatrix, CMatrix> generate_hermitian_pair(int N, double scaleA, double scaleB);
     CMatrix analytic_omega(double h, const CMatrix& A, const CMatrix& B, int N);
     std::pair<CMatrix, CMatrix> generate_hermitian_pair_dd(int N, double scaleA, double scaleB, double noncomm_factor, double diag_offset);
+
+    // Generate spectrally decomposable matrix H = V*D*V^(-1) with given condition number
+    std::tuple<CMatrix, CMatrix, CMatrix> generate_spectral_matrix(int N, double condition_number, double diag_dominance = 3.0);
 }
