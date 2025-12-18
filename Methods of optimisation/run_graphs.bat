@@ -1,9 +1,13 @@
 @echo off
-echo Starting graphics scripts...
+echo ========================================
+echo Starting graphics scripts for Magnus Experiments
+echo ========================================
 echo.
 
 cd /d "%~dp0"
 echo Current folder: %CD%
+echo MKL_NUM_THREADS: %MKL_NUM_THREADS%
+echo OMP_NUM_THREADS: %OMP_NUM_THREADS%
 echo.
 
 echo Starting graph_experiment_1.py...
@@ -22,5 +26,7 @@ echo Starting graph_experiment_5.py...
 python graph_experiment_5.py
 echo.
 
-echo Done!
+echo ========================================
+echo All graphics scripts completed!
+echo ========================================
 pause
