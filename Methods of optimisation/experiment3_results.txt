@@ -1,0 +1,12 @@
+=================================================================
+EXPERIMENT 3: ODE Solution U'(t) = -iH*U(t) Comparison
+N=100, T=1.000000000000e+00
+Test matrix: H_test_matrix.txt
+Reference: Exact solution U(T) = exp(-i*H*T) with Eigen Pade
+-----------------------------------------------------------------
+Method | Max Element Diff | Max Eig Diff | Time (ms)
+-----------------------------------------------------------------
+Runge-Kutta dt=1e-5 | 5.371185967169e-09 | 7.554754403643e-09 | 5.902262400000e+04
+Magnus ACC + Chebyshev | 1.076355609066e-12 | 1.146114072556e-12 | 3.869000000000e+00
+-----------------------------------------------------------------
+Note: Reference solution uses exp(-i*H*T) with Eigen Pade approximation

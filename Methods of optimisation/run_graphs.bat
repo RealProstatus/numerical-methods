@@ -18,12 +18,20 @@ echo Starting graph_experiment_2.py...
 python graph_experiment_2.py
 echo.
 
+echo Starting graph_experiment_3.py...
+python graph_experiment_3.py
+echo.
+
 echo Starting graph_experiment_4.py...
 python graph_experiment_4.py
 echo.
 
 echo Starting graph_experiment_5.py...
 python graph_experiment_5.py
+echo.
+
+echo Starting graph_experiment_6.py...
+python graph_experiment_6.py
 echo.
 
 echo ========================================

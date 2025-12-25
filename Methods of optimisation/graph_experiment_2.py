@@ -2,17 +2,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import re
 
-def safe_log_values(values, min_val=1e-20):
-    """Безопасное преобразование значений для логарифмической шкалы"""
-    safe_values = []
-    for v in values:
-        if v <= 0:
-            safe_values.append(min_val)
-        elif v < min_val:
-            safe_values.append(min_val)
-        else:
-            safe_values.append(v)
-    return np.array(safe_values)
 
 def parse_experiment2_results(filename):
     """Парсинг результатов эксперимента 2 из файла experiment2_results.txt"""
@@ -62,8 +51,8 @@ def plot_experiment2(results):
         return
 
     # Создаем фигуру
-    fig = plt.figure(figsize=(16, 12))
-    fig.suptitle('Эксперимент 2: Сравнение методов вычисления exp(Ω)\n(Матричная экспонента для анти-эрмитовой матрицы)', fontsize=14, fontweight='bold')
+    fig = plt.figure(figsize=(15, 10))
+    fig.suptitle('Эксперимент 2: Сравнение методов вычисления exp(Omega)\n(Матричная экспонента)', fontsize=14, fontweight='bold')
 
     # Цвета для разных методов
     colors = {'Taylor': 'blue', 'Chebyshev': 'red', 'Eigen Pade': 'green'}
@@ -155,86 +144,9 @@ def plot_experiment2(results):
     print("Saved experiment2_analysis.png")
     plt.show()
 
-    # Дополнительные графики: компромисс точность-время
-    fig2, (ax7, ax8) = plt.subplots(1, 2, figsize=(15, 6))
-    fig2.suptitle('Эксперимент 2: Компромисс точность-производительность', fontsize=14, fontweight='bold')
-
-    # График 7: Элементы - время vs точность
-    ax7 = plt.subplot(1, 2, 1)
-    if taylor_data:
-        safe_times = np.array(taylor_data['time'])
-        safe_errors = safe_log_values(taylor_data['max_el'])
-        mask = (safe_times > 0) & (safe_errors > 0)
-        if np.any(mask):
-            ax7.scatter(safe_times[mask], safe_errors[mask],
-                       label='Taylor', color=colors['Taylor'], s=80, alpha=0.8, marker='o')
-            if np.sum(mask) > 1:
-                sorted_indices = np.argsort(safe_times[mask])
-                ax7.plot(safe_times[mask][sorted_indices], safe_errors[mask][sorted_indices],
-                        '-', color=colors['Taylor'], alpha=0.6, linewidth=2)
-
-    if cheb_data:
-        safe_times = np.array(cheb_data['time'])
-        safe_errors = safe_log_values(cheb_data['max_el'])
-        mask = (safe_times > 0) & (safe_errors > 0)
-        if np.any(mask):
-            ax7.scatter(safe_times[mask], safe_errors[mask],
-                       label='Chebyshev', color=colors['Chebyshev'], s=80, alpha=0.8, marker='s')
-            if np.sum(mask) > 1:
-                sorted_indices = np.argsort(safe_times[mask])
-                ax7.plot(safe_times[mask][sorted_indices], safe_errors[mask][sorted_indices],
-                        '--', color=colors['Chebyshev'], alpha=0.6, linewidth=2)
-
-    ax7.set_xlabel('Время выполнения (мс)')
-    ax7.set_ylabel('Макс. разность элементов')
-    ax7.set_title('Компромисс: время vs точность (элементы)')
-    ax7.set_xscale('log')
-    ax7.set_yscale('log')
-    ax7.grid(True, alpha=0.3)
-    ax7.legend(fontsize=10)
-
-    # График 8: Собственные значения - время vs точность
-    ax8 = plt.subplot(1, 2, 2)
-    if taylor_data:
-        safe_times = np.array(taylor_data['time'])
-        safe_errors = safe_log_values(taylor_data['max_eig'])
-        mask = (safe_times > 0) & (safe_errors > 0)
-        if np.any(mask):
-            ax8.scatter(safe_times[mask], safe_errors[mask],
-                       label='Taylor', color=colors['Taylor'], s=80, alpha=0.8, marker='o')
-            if np.sum(mask) > 1:
-                sorted_indices = np.argsort(safe_times[mask])
-                ax8.plot(safe_times[mask][sorted_indices], safe_errors[mask][sorted_indices],
-                        '-', color=colors['Taylor'], alpha=0.6, linewidth=2)
-
-    if cheb_data:
-        safe_times = np.array(cheb_data['time'])
-        safe_errors = safe_log_values(cheb_data['max_eig'])
-        mask = (safe_times > 0) & (safe_errors > 0)
-        if np.any(mask):
-            ax8.scatter(safe_times[mask], safe_errors[mask],
-                       label='Chebyshev', color=colors['Chebyshev'], s=80, alpha=0.8, marker='s')
-            if np.sum(mask) > 1:
-                sorted_indices = np.argsort(safe_times[mask])
-                ax8.plot(safe_times[mask][sorted_indices], safe_errors[mask][sorted_indices],
-                        '--', color=colors['Chebyshev'], alpha=0.6, linewidth=2)
-
-    ax8.set_xlabel('Время выполнения (мс)')
-    ax8.set_ylabel('Макс. разность собств. значений')
-    ax8.set_title('Компромисс: время vs точность (собств. значения)')
-    ax8.set_xscale('log')
-    ax8.set_yscale('log')
-    ax8.grid(True, alpha=0.3)
-    ax8.legend(fontsize=10)
-
-    plt.tight_layout()
-    plt.savefig('experiment2_efficiency.png', dpi=150, bbox_inches='tight', facecolor='white')
-    print("Saved experiment2_efficiency.png")
-    plt.show()
-
     # Final statistics
     print("\n=== Experiment 2 Statistics ===")
-    print("Matrix exponentiation methods comparison for anti-Hermitian matrix Ω = -i×H")
+    print("Matrix exponentiation methods comparison")
     print("Reference: Eigen Pade approximation")
 
     for method, data in results.items():

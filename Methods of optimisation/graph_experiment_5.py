@@ -2,17 +2,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import re
 
-def safe_log_values(values, min_val=1e-20):
-    """Безопасное преобразование значений для логарифмической шкалы"""
-    safe_values = []
-    for v in values:
-        if v <= 0:
-            safe_values.append(min_val)
-        elif v < min_val:
-            safe_values.append(min_val)
-        else:
-            safe_values.append(v)
-    return np.array(safe_values)
 
 def parse_experiment5_results(filename):
     """Парсинг результатов эксперимента 5 из файла experiment5_results.txt"""
@@ -61,7 +50,7 @@ def plot_experiment5(results):
     methods = ['Taylor', 'Chebyshev', 'Eigen Pade']
 
     # Создаем фигуру
-    fig = plt.figure(figsize=(16, 10))
+    fig = plt.figure(figsize=(15, 8))
     fig.suptitle('Эксперимент 5: Устойчивость методов экспоненцирования\n(Зависимость точности exp(-i*H) от числа обусловленности)', fontsize=14, fontweight='bold')
 
     # Цвета для разных методов
@@ -80,7 +69,7 @@ def plot_experiment5(results):
         ax1.plot(kappas, el_errors, 'o-', label=method,
                 color=colors[method], linewidth=2, markersize=8)
 
-    ax1.set_xlabel('Число обусловленности κ')
+    ax1.set_xlabel('Число обусловленности kappa')
     ax1.set_ylabel('Макс. разность элементов')
     ax1.set_title('Точность по элементам')
     ax1.grid(True, alpha=0.3)
@@ -101,7 +90,7 @@ def plot_experiment5(results):
         ax2.plot(kappas, eig_errors, 's--', label=method,
                 color=colors[method], linewidth=2, markersize=8)
 
-    ax2.set_xlabel('Число обусловленности κ')
+    ax2.set_xlabel('Число обусловленности kappa')
     ax2.set_ylabel('Макс. разность собств. значений')
     ax2.set_title('Точность по собственным значениям')
     ax2.grid(True, alpha=0.3)
@@ -122,7 +111,7 @@ def plot_experiment5(results):
         ax3.plot(kappas, times, '^-', label=method,
                 color=colors[method], linewidth=2, markersize=8)
 
-    ax3.set_xlabel('Число обусловленности κ')
+    ax3.set_xlabel('Число обусловленности kappa')
     ax3.set_ylabel('Время выполнения (мс)')
     ax3.set_title('Производительность')
     ax3.grid(True, alpha=0.3)
@@ -146,7 +135,7 @@ def plot_experiment5(results):
         ax4.bar(x + i*bar_width, el_errors, bar_width, label=method,
                alpha=0.8, color=colors[method])
 
-    ax4.set_xlabel('Число обусловленности κ')
+    ax4.set_xlabel('Число обусловленности kappa')
     ax4.set_ylabel('Макс. разность элементов')
     ax4.set_title('Сравнение методов по точности')
     ax4.set_xticks(x + bar_width)
@@ -174,76 +163,13 @@ def plot_experiment5(results):
     print("Сохранен experiment5_exponent_stability.png")
     plt.show()
 
-    # Дополнительные графики: эффективность
-    fig2, (ax5, ax6) = plt.subplots(1, 2, figsize=(15, 6))
-    fig2.suptitle('Эксперимент 5: Эффективность методов экспоненцирования', fontsize=14, fontweight='bold')
-
-    # График 5: Эффективность по элементам
-    ax5 = plt.subplot(1, 2, 1)
-    for method in methods:
-        efficiency = []
-        for kappa in kappas:
-            if method in results[kappa]:
-                el_err = results[kappa][method]['max_el'][0]
-                time_val = results[kappa][method]['time'][0]
-                if time_val > 0 and el_err > 0:
-                    efficiency.append(el_err / time_val)
-                else:
-                    efficiency.append(np.nan)
-            else:
-                efficiency.append(np.nan)
-
-        safe_eff = safe_log_values(efficiency)
-        ax5.plot(kappas, safe_eff, 'o-', label=method,
-                color=colors[method], linewidth=2, markersize=8)
-
-    ax5.set_xlabel('Число обусловленности κ')
-    ax5.set_ylabel('Ошибка/Время (эффективность)')
-    ax5.set_title('Эффективность по элементам')
-    ax5.grid(True, alpha=0.3)
-    ax5.legend(fontsize=10)
-    ax5.set_xscale('log')
-    ax5.set_yscale('log')
-
-    # График 6: Эффективность по собственным значениям
-    ax6 = plt.subplot(1, 2, 2)
-    for method in methods:
-        efficiency = []
-        for kappa in kappas:
-            if method in results[kappa]:
-                eig_err = results[kappa][method]['max_eig'][0]
-                time_val = results[kappa][method]['time'][0]
-                if time_val > 0 and eig_err > 0:
-                    efficiency.append(eig_err / time_val)
-                else:
-                    efficiency.append(np.nan)
-            else:
-                efficiency.append(np.nan)
-
-        safe_eff = safe_log_values(efficiency)
-        ax6.plot(kappas, safe_eff, 's--', label=method,
-                color=colors[method], linewidth=2, markersize=8)
-
-    ax6.set_xlabel('Число обусловленности κ')
-    ax6.set_ylabel('Ошибка/Время (эффективность)')
-    ax6.set_title('Эффективность по собств. значениям')
-    ax6.grid(True, alpha=0.3)
-    ax6.legend(fontsize=10)
-    ax6.set_xscale('log')
-    ax6.set_yscale('log')
-
-    plt.tight_layout()
-    plt.savefig('experiment5_efficiency.png', dpi=150, bbox_inches='tight', facecolor='white')
-    print("Сохранен experiment5_efficiency.png")
-    plt.show()
-
     # Финальная статистика
     print("\n=== Статистика Эксперимента 5 ===")
     print("Устойчивость методов вычисления exp(-i*H) при разных числах обусловленности")
     print("Эталон: exp(-i*H) = V*exp(-i*D)*V^(-1)")
 
     for kappa in kappas:
-        print(f"\nЧисло обусловленности κ = {kappa}:")
+        print(f"\nЧисло обусловленности kappa = {kappa}:")
         for method in methods:
             if method in results[kappa]:
                 data = results[kappa][method]
@@ -277,7 +203,7 @@ def main():
             print(f"Найдены данные для {len(results)} значений обусловленности:")
             for kappa in sorted(results.keys()):
                 methods_count = len(results[kappa])
-                print(f"  κ = {kappa}: {methods_count} методов")
+                print(f"  kappa = {kappa}: {methods_count} методов")
 
             plot_experiment5(results)
         else:
