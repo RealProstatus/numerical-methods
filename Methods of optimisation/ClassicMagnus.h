@@ -1,0 +1,29 @@
+#pragma once
+
+#include "MatrixOperations.h"
+
+#include <vector>
+
+using namespace std;
+
+// ------ Trapezoidal integration for matrix functions ------
+vector<CMatrix> generate_samples(double t0, double t1, double dt, int N,
+    const CMatrix& H0, const CMatrix& H_mod,
+    double eps0, double W);
+
+CMatrix trapezoidal_integral(const vector<CMatrix>& samples, double dt, int N);
+
+// ------ Simpson's rule integration (4th order accuracy) ------
+// Требует нечетного количества точек (четного числа интервалов).
+CMatrix simpson_integral(const vector<CMatrix>& samples, double dt, int N);
+
+// =============================================================
+// =================== Classic Magnus up to 3 ==================
+// =============================================================
+CMatrix magnus_classic(
+    double t0, double t1, double dt,
+    int N, const CMatrix& H0, const CMatrix& H_mod,
+    double eps0, double W,
+    int max_order);
+
+

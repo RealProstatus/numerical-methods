@@ -138,13 +138,28 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="AccMagnus.cpp" />
+    <ClCompile Include="ChebyshevExpm.cpp" />
+    <ClCompile Include="ClassicMagnus.cpp" />
+    <ClCompile Include="EigenPadeExpm.cpp" />
+    <ClCompile Include="Formula314Magnus.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="MatrixOperations.cpp" />
+    <ClCompile Include="RecursiveMagnus.cpp" />
+    <ClCompile Include="TaylorExpm.cpp" />
     <ClCompile Include="Utils.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AccMagnus.h" />
+    <ClInclude Include="AllComputationalMethods.h" />
+    <ClInclude Include="ChebyshevExpm.h" />
+    <ClInclude Include="ClassicMagnus.h" />
+    <ClInclude Include="EigenPadeExpm.h" />
+    <ClInclude Include="Formula314Magnus.h" />
     <ClInclude Include="MatrixOperations.h" />
+    <ClInclude Include="RecursiveMagnus.h" />
     <ClInclude Include="RungeKutt.h" />
+    <ClInclude Include="TaylorExpm.h" />
     <ClInclude Include="Utils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

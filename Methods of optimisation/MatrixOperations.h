@@ -31,9 +31,7 @@ namespace matrix_ops {
     CMatrix iterated_commutator(const CMatrix& X, const CMatrix& Y, int k, int N);
 
     // РАЗЛОЖЕНИЕ ТЕЙЛОРА: Вычисляет exp(A) ≈ I + A + A² / 2!+ A³ / 3!+ ... + Aⁿ / n!
-    CMatrix expm_taylor(const CMatrix& A, int N, int terms = 30);
 
-    CMatrix expm_cheb(const CMatrix& Omega, int N, int K);
 
     // Новые функции для разложения Магнуса
     double bernoulli_number(int j);
@@ -56,27 +54,10 @@ namespace matrix_ops {
 
     CMatrix matrix_exp_special(const CMatrix& A, int N, double dt);
 
-    CMatrix right_nested_comm(const vector<CMatrix>& A_samples, const vector<int>& perm, int N);
-
-    CMatrix compute_Omega5_ACC(const vector<CMatrix>& A, int N);
-    CMatrix compute_Omega6_ACC(const vector<CMatrix>& A, int N);
-
-    CMatrix compute_Omega_3_14(
-        const CMatrix& H0,
-        const CMatrix& Hmod,
-        double h,
-        double f_t1,
-        double f_half,
-        double fp_half,
-        double f2_half,
-        double f2_t1,
-        int N);
-
     CMatrix dagger(const CMatrix& A, int N);
     bool is_unitary(const CMatrix& U, int N, double tol = 1e-10);
     double max_element_diff(const CMatrix& A, const CMatrix& B, int N);
     double max_eigenvalue_modulus_hermitian(const CMatrix& M, int N);
 
     // Wrappers of library methods of e^A
-    CMatrix expm_pade_eigen(const CMatrix& A, int N);
 }
