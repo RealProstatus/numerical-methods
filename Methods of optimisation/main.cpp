@@ -633,10 +633,7 @@ int main() {
 
             // Reference solution U(T) = exp(-i * H * T)
             CMatrix Omega_exact = matrix_ops::mat_scale(H, complexd(0.0, -T));
-            auto start_exact = chrono::high_resolution_clock::now();
             CMatrix U_exact = matrix_ops::expm_pade_eigen(Omega_exact, N);
-            auto end_exact = chrono::high_resolution_clock::now();
-            auto duration_exact = chrono::duration_cast<chrono::microseconds>(end_exact - start_exact);
 
             // Method 1: Runge-Kutta with dt = 1e-5
             {
