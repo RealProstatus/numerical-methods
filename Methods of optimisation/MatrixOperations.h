@@ -1,9 +1,7 @@
 ﻿#pragma once
-#include <complex>
-#include <vector>
+
 #include "Utils.h"
-#include <map>     // Обязательно для std::map
-#include <utility> // Обязательно для std::pair
+#include <map>
 
 using namespace std;
 using complexd = complex<double>;

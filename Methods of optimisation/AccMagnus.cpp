@@ -1,9 +1,5 @@
 #include "AccMagnus.h"
-
 #include "ClassicMagnus.h"
-
-#include <complex>
-#include <vector>
 
 using namespace std;
 using namespace matrix_ops;

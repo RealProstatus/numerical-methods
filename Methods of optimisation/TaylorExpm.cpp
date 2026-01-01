@@ -1,9 +1,5 @@
 #include "TaylorExpm.h"
 
-#include "Utils.h"
-
-#include <cmath>
-
 namespace matrix_ops {
     // 3. Матричная экспонента
     // Умная экспонента: Scaling and Squaring

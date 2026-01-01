@@ -1,11 +1,5 @@
-﻿#include <iostream>
-#include <complex>
-#include <vector>
-#include <iomanip>
+﻿#include <iomanip>
 #include <chrono>
-#include <functional>
-#include "Utils.h"
-#include "MatrixOperations.h"
 #include "AllComputationalMethods.h"
 #include "RungeKutt.h"
 

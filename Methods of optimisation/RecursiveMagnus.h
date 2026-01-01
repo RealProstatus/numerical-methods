@@ -2,8 +2,6 @@
 
 #include "MatrixOperations.h"
 
-#include <vector>
-
 using namespace std;
 
 // ================================================================

@@ -1,8 +1,5 @@
 #include "Formula314Magnus.h"
-
 #include "ClassicMagnus.h"
-
-#include <vector>
 
 using namespace std;
 using namespace matrix_ops;

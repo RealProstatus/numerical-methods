@@ -1,11 +1,7 @@
 #include "RecursiveMagnus.h"
-
 #include "ClassicMagnus.h"
 
-#include <complex>
 #include <functional>
-#include <map>
-#include <vector>
 
 using namespace std;
 using namespace matrix_ops;

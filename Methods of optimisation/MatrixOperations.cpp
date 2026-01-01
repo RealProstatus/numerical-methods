@@ -1,16 +1,7 @@
 ﻿#include "MatrixOperations.h"
-#include "Utils.h"
-#include <mkl.h>
-#include <iostream>
-#include <map>
-#include <array>
-#include <cmath>
-#include <mkl_lapacke.h>
-#include <set>
 
-#include <Eigen/Dense>
-#include <unsupported/Eigen/MatrixFunctions>
-#include <Eigen/IterativeLinearSolvers>
+#include <mkl.h>
+#include <mkl_lapacke.h>
 
 namespace matrix_ops {
     // 1. Базовые матричные операции
