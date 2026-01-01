@@ -8,7 +8,7 @@ using namespace utils;
 using namespace matrix_ops;
 
 namespace runge_kutta_simple {
-    // Метод Рунге-Кутты 4-го порядка на один шаг
+    // Simple 4th-order RungeвЂ“Kutta step for the matrix ODE U'(t) = -i * H * U(t)
     CMatrix runge_kutta_step(const CMatrix& H, const CMatrix& U, double dt, int N) {
         complexd minus_i(0.0, -1.0);
 

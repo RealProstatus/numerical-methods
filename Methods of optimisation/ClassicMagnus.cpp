@@ -3,8 +3,8 @@
 using namespace std;
 using namespace matrix_ops;
 
-//  ------ Generation of permutations {2,3,...,n} ------ 
-// Генерация всех перестановок вектора base
+//  ------ Generation of permutations ------
+// Generate all permutations of vector `base`.
 void generate_permutations(vector<int>& base, vector<vector<int>>& result, int start = 0) {
     int n = base.size();
     if (start == n) {
@@ -15,11 +15,11 @@ void generate_permutations(vector<int>& base, vector<vector<int>>& result, int s
     for (int i = start; i < n; ++i) {
         swap(base[start], base[i]);
         generate_permutations(base, result, start + 1);
-        swap(base[start], base[i]); // откатываем для следующей итерации
+        swap(base[start], base[i]); // rollback for the next iteration
     }
 }
 
-// ------ Trapezoidal integration for matrix functions ------
+// ------ Trapezoidal integration for matrix-valued functions ------
 vector<CMatrix> generate_samples(double t0, double t1, double dt, int N,
     const CMatrix& H0, const CMatrix& H_mod,
     double eps0, double W) {
@@ -69,38 +69,38 @@ CMatrix trapezoidal_integral(const vector<CMatrix>& samples, double dt, int N) {
 }
 
 // ------ Simpson's rule integration (4th order accuracy) ------
-// Требует нечетного количества точек (четного числа интервалов).
+// Requires an odd number of points (an even number of intervals).
 CMatrix simpson_integral(const vector<CMatrix>& samples, double dt, int N) {
     CMatrix result((size_t)N * N, complexd(0.0, 0.0));
     int n_samples = samples.size();
 
     if (n_samples < 3) return trapezoidal_integral(samples, dt, N);
 
-    // Метод Симпсона работает на четном числе интервалов (нечетное число точек).
-    // Если точек четное количество, последнюю обработаем отдельно трапецией.
+    // Simpson's rule requires an even number of intervals (odd number of points).
+    // If the number of points is even, handle the last interval with trapezoids.
     int limit = (n_samples % 2 == 1) ? n_samples : n_samples - 1;
 
-    // Формула: (h/3) * (f0 + 4f1 + 2f2 + 4f3 + ... + fn)
+    // Formula: (h/3) * (f0 + 4f1 + 2f2 + 4f3 + ... + fn)
 
-    // Крайние точки (вес 1)
+    // Endpoints (weight 1)
     for (size_t k = 0; k < result.size(); ++k) {
         result[k] = samples[0][k] + samples[limit - 1][k];
     }
 
-    // Внутренние точки
+    // Interior points
     for (int i = 1; i < limit - 1; ++i) {
-        double w = (i % 2 == 1) ? 4.0 : 2.0; // Чередование весов 4, 2, 4, 2...
+        double w = (i % 2 == 1) ? 4.0 : 2.0; // alternating weights: 4, 2, 4, 2...
         for (size_t k = 0; k < result.size(); ++k) {
             result[k] += samples[i][k] * w;
         }
     }
 
-    // Масштабируем на dt/3
+    // Scale by dt/3
     mat_scale_inplace(result, N, complexd(dt / 3.0, 0.0));
 
-    // Если осталась одна точка в конце (четное число сэмплов)
+    // If there is one leftover interval at the end (even number of samples)
     if (n_samples % 2 == 0) {
-        // Добавляем площадь последнего интервала методом трапеций
+        // Add the area of the last interval using trapezoids
         for (size_t k = 0; k < result.size(); ++k) {
             complexd trap_area = (samples[n_samples - 2][k] + samples[n_samples - 1][k]) * 0.5 * dt;
             result[k] += trap_area;
@@ -131,19 +131,19 @@ CMatrix magnus_classic(
     CMatrix Omega((size_t)N * N, complexd(0.0, 0.0));
 
     // === Omega1 ===
-    // Интеграл методом трапеций (O(M))
+    // Trapezoidal integral (O(M))
     CMatrix Omega1 = trapezoidal_integral(A, dt, N);
     mat_add(Omega, Omega1, Omega, N);
 
     if (max_order == 1) return Omega;
 
     // === Omega2 ===
-    // ОПТИМИЗАЦИЯ: O(M) вместо O(M^2)
+    // Optimization: O(M) instead of O(M^2)
     CMatrix Omega2((size_t)N * N, complexd(0.0, 0.0));
-    CMatrix Accumulator((size_t)N * N, complexd(0.0, 0.0)); // Хранит сумму A[0]...A[i-1]
+    CMatrix Accumulator((size_t)N * N, complexd(0.0, 0.0)); // stores sum A[0]...A[i-1]
 
-    // На первой итерации (i=0) Accumulator пуст, коммутатор равен 0.
-    // Начинаем сразу накопление.
+    // On the first iteration (i=0) Accumulator is empty, commutator is 0.
+    // Start accumulating immediately.
 
     for (int i = 0; i < M; ++i) {
         if (i > 0) {
@@ -151,7 +151,7 @@ CMatrix magnus_classic(
             CMatrix comm = commutator(A[i], Accumulator, N);
             mat_add(Omega2, comm, Omega2, N);
         }
-        // Добавляем текущий A[i] в аккумулятор для следующих шагов
+        // Add current A[i] into accumulator for subsequent steps
         mat_add(Accumulator, A[i], Accumulator, N);
     }
 
@@ -161,14 +161,13 @@ CMatrix magnus_classic(
     if (max_order == 2) return Omega;
 
     // === Omega3 ===
-    // ВНИМАНИЕ: Omega3 здесь все еще O(M^3). 
-    // Если вы захотите считать 3-й порядок с 50000 точками, программа снова зависнет.
-    // Для теста в main вы используете n <= 2, поэтому этот блок не вызовет проблем сейчас.
+    // WARNING: Omega3 here is still O(M^3).
+    // Do not run 3rd order with very large M (e.g. 50000 points).
 
     if (max_order >= 3) {
         CMatrix Omega3((size_t)N * N, complexd(0.0, 0.0));
-        // Прямая реализация слишком тяжелая для M=50000.
-        // Оставляем как есть, но предупреждаем: не запускайте Classic Magnus порядка 3 на мелкой сетке.
+        // Direct implementation is too heavy for large M.
+        // Kept as-is; do not run Classic Magnus order 3 on a fine grid.
         cout << "Warning: Classic Omega3 calculation is extremely slow for large M!" << endl;
 
         for (int i = 0; i < M; ++i)

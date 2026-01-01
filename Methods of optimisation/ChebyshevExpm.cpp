@@ -7,13 +7,13 @@ namespace matrix_ops {
     {
         using namespace std;
 
-        // 1. Оценка спектрального радиуса
+        // 1. Estimate spectral radius (via 1-norm here)
         double norm = mat_one_norm(Omega, N);
 
         if (norm < 1e-14)
             return utils::eye(N);
 
-        // 2. Scaling and Squaring
+        // 2. Scaling and squaring
         int s = 0;
         double scaled_norm = norm;
         while (scaled_norm > 1.0) {
@@ -25,20 +25,19 @@ namespace matrix_ops {
         CMatrix A_scaled = mat_scale(Omega, complexd(1.0 / std::pow(2.0, s), 0.0));
         double alpha = scaled_norm;
 
-        // 3. Нормировка для рекурсии
+        // 3. Normalization for recurrence
         // X = i * A_scaled / alpha
         CMatrix X = mat_copy(A_scaled);
         if (alpha > 1e-16) {
             mat_scale_inplace(X, N, complexd(0.0, 1.0 / alpha));
         }
 
-        // Инициализация рекурсии
+        // Initialize recurrence
         CMatrix Tk_prev = utils::eye(N); // T_0
         CMatrix Tk_curr = mat_copy(X);   // T_1
 
         CMatrix res_scaled(N * N, complexd(0.0, 0.0));
 
-        // --- FIX START: Corrected Coefficients for (-i)^k ---
 
         // Term k=0: J_0(alpha) * I
         double J0 = std::cyl_bessel_j(0, alpha);
@@ -49,7 +48,7 @@ namespace matrix_ops {
         // (-i)^1 = -i. Coefficient is -2i * J1.
         double J1 = std::cyl_bessel_j(1, alpha);
 
-        // ИСПРАВЛЕНО: Знак минус (-2.0)
+        // minus sign (-2.0)
         complexd coeff1 = complexd(0.0, -2.0 * J1);
 
         for (size_t i = 0; i < res_scaled.size(); ++i)
@@ -71,13 +70,13 @@ namespace matrix_ops {
                 // break; 
             }
 
-            // ИСПРАВЛЕНО: Вычисляем (-i)^k
+            // compute (-i)^k
             complexd i_pow_k;
             int rem = k % 4;
             if (rem == 0) i_pow_k = complexd(1.0, 0.0);       // 1
-            else if (rem == 1) i_pow_k = complexd(0.0, -1.0); // -i (было i)
+            else if (rem == 1) i_pow_k = complexd(0.0, -1.0); // -i
             else if (rem == 2) i_pow_k = complexd(-1.0, 0.0); // -1
-            else i_pow_k = complexd(0.0, 1.0);                // i  (было -i)
+            else i_pow_k = complexd(0.0, 1.0);                // i
 
             complexd coeff = complexd(2.0 * Jk, 0.0) * i_pow_k;
 

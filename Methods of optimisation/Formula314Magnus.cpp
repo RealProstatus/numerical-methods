@@ -13,17 +13,15 @@ CMatrix magnus_3_14(
     int N, const CMatrix& H0, const CMatrix& H_mod,
     double eps0, double W)
 {
-    // Сэмплируем A(t) = H0 + f(t) H_mod
+    // Sample A(t) = H0 + f(t) * H_mod
     vector<CMatrix> A = generate_samples(t0, t1, dt, N, H0, H_mod, eps0, W);
-    int M = A.size();
 
-    double h = t1 - t0;                 // шаг интегрирования
+    double h = t1 - t0;                 // integration step
     double t_half = 0.5 * (t0 + t1);    // t_{1/2}
 
-    // f(t), f'(t), f''(t) восстановим через численные производные
-    // === Важно: generate_samples генерирует A_k = H0 + f_k * H_mod
-    // => можно извлечь f_k = <A_k - H0, H_mod> / ||H_mod||^2
-    // но т.к. H_mod — фиксированная структура, проще вычислить f(·) напрямую.
+    // f(t), f'(t), f''(t) are computed analytically here.
+    // NOTE: generate_samples builds A_k = H0 + f_k * H_mod (with -i factor elsewhere),
+    // but here we evaluate f(.) directly.
 
     auto f_fun = [&](double t)
         {
@@ -40,14 +38,14 @@ CMatrix magnus_3_14(
             return -eps0 * W * W * std::sin(W * t);
         };
 
-    // Значения в формуле (3.14)
+    // Values used in formula (3.14)
     double f_t1 = f_fun(t1);
     double f_half = f_fun(t_half);
     double fp_half = fp_fun(t_half);
     double f2_half = f2_fun(t_half);
     double f2_t1 = f2_fun(t1);
 
-    // А теперь считаем Ω по формуле (3.14)
+    // Compute Ω using formula (3.14)
     CMatrix Omega = compute_Omega_3_14(
         H0, H_mod,
         h,

@@ -4,7 +4,7 @@
 
 using namespace std;
 
-// ------ Trapezoidal integration for matrix functions ------
+// ------ Trapezoidal integration for matrix-valued functions ------
 vector<CMatrix> generate_samples(double t0, double t1, double dt, int N,
     const CMatrix& H0, const CMatrix& H_mod,
     double eps0, double W);
@@ -12,7 +12,7 @@ vector<CMatrix> generate_samples(double t0, double t1, double dt, int N,
 CMatrix trapezoidal_integral(const vector<CMatrix>& samples, double dt, int N);
 
 // ------ Simpson's rule integration (4th order accuracy) ------
-// Требует нечетного количества точек (четного числа интервалов).
+// Requires an odd number of points (an even number of intervals).
 CMatrix simpson_integral(const vector<CMatrix>& samples, double dt, int N);
 
 // =============================================================

@@ -13,7 +13,7 @@ namespace utils
         uniform_real_distribution<double> dist(-1.0, 1.0);
 
         for (int i = 0; i < N; i++) {
-            // Диагональное преобладание ×10
+            // Strong diagonal dominance
             matrix[idx(i, i, N)] = { (dist(gen) * dominance_factor + 50.0) * 10.0, 0.0 };
 
             for (int j = i + 1; j < N; j++) {
@@ -52,7 +52,6 @@ namespace utils
     file << "Matrix " << N << "x" << N << ":\n";
     file << "========================================\n";
 
-    // Научная запись с 12 значащими цифрами
     file << scientific << setprecision(12);
 
     for (int i = 0; i < N; ++i) {
@@ -110,11 +109,10 @@ namespace utils
         return Om;
     }
 
-    // Генерация пары эрмитовых матриц N×N с контролем диагонального преобладания.
-// scaleA, scaleB — базовый масштаб вне-диагонали (умножается на случайные числа).
-// noncomm_factor — множитель, которым мы умно усиливаем B (или вне-диагональ A),
-//                    чтобы увеличить [A,B] без разрушения диагонального преобладания.
-// diag_offset — добавляется к каждой диагонали (делает матрицы диагонально-преобладающими).
+    // Generate a pair of Hermitian matrices N×N with controlled diagonal dominance.
+    // scaleA, scaleB: base off-diagonal scale.
+    // noncomm_factor: multiplier to amplify off-diagonals (to increase [A,B]) while preserving dominance.
+    // diag_offset: added to the diagonal (keeps matrices diagonally dominant).
     std::pair<CMatrix, CMatrix> generate_hermitian_pair_dd(int N,
         double scaleA,
         double scaleB,
@@ -128,7 +126,7 @@ namespace utils
         auto gen_one = [&](double scale, double diag_off, bool amplify_offdiag = false) {
             CMatrix H((size_t)N * N, complexd(0.0, 0.0));
 
-            // Сначала создаём случайные верхнетреугольные значения
+            // First generate random upper-triangular values
             for (int i = 0; i < N; ++i) {
                 for (int j = i + 1; j < N; ++j) {
                     double re = dist(gen) * scale;
@@ -139,7 +137,7 @@ namespace utils
                 }
             }
 
-            // Теперь делаем диагональ так, чтобы соблюдать строгую диагональную преобладание:
+            // Now choose the diagonal to enforce strict diagonal dominance:
             // diag[i] = diag_offset + sum_j |offdiag_row_j| * safety_factor
             for (int i = 0; i < N; ++i) {
                 double row_sum = 0.0;
@@ -147,10 +145,10 @@ namespace utils
                     if (i == j) continue;
                     row_sum += std::abs(H[idx(i, j, N)]);
                 }
-                // safety_factor > 1 гарантирует строгую преобладание
+                // safety_factor > 1 guarantees strict dominance
                 double safety_factor = 1.2;
                 double diag_val = diag_off + safety_factor * row_sum;
-                // добавим небольшой случайный шум, чтобы не быть полностью детерминированным
+                // add small random noise to avoid being fully deterministic
                 diag_val += dist(gen) * 0.01 * diag_off;
                 H[idx(i, i, N)] = complexd(diag_val, 0.0);
             }
@@ -158,7 +156,7 @@ namespace utils
             return H;
             };
 
-        // Генерируем A с "обычными" off-diag, а B — с усиленными off-diag (по noncomm_factor)
+        // Generate A with "normal" off-diagonals, and B with amplified off-diagonals (via noncomm_factor)
         CMatrix A = gen_one(scaleA, diag_offset, false);
         CMatrix B = gen_one(scaleB, diag_offset, true);
 

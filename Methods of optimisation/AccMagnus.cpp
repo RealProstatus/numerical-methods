@@ -7,16 +7,16 @@ using namespace matrix_ops;
 namespace matrix_ops {
     // === Helper: right-nested commutator ===
     //   [A1, [A2, [A3, [..., An]]]]
-    // list — вектор A_samples, perm — перестановка (индексы, начиная с 1 или 0), N — размер
+    // list: vector of A_samples, perm: permutation indices (0-based), N: matrix size
     CMatrix right_nested_comm(const vector<CMatrix>& A_samples, const vector<int>& perm, int N)
     {
         int k = perm.size();
         if (k == 0) return CMatrix(N * N, complexd(0, 0));
 
-        // 1. Начинаем с самого внутреннего элемента (последний индекс в perm)
+        // 1. Start from the innermost element (last index in perm)
         CMatrix R = A_samples[perm.back()];
 
-        // 2. Идем от предпоследнего к началу
+        // 2. Go from the second-last to the beginning
         for (int i = k - 2; i >= 0; --i) {
             R = commutator(A_samples[perm[i]], R, N);
         }
@@ -31,7 +31,7 @@ namespace matrix_ops {
 
     // === Compute Omega_5 using ACC coefficients ===
     CMatrix compute_Omega5_ACC(const vector<CMatrix>& A, int N) {
-        // 24 перестановки для Omega5
+        // 24 permutations for Omega5
         static const vector<vector<int>> perms = {
             {1,2,3,4},{1,2,4,3},{1,3,2,4},{1,3,4,2},{1,4,2,3},{1,4,3,2},
             {0,2,3,4},{0,2,4,3},{0,3,2,4},{0,3,4,2},{0,4,2,3},{0,4,3,2},
@@ -157,56 +157,45 @@ CMatrix magnus_ACC(
     int N,
     int max_order)
 {
-    // 1. Вычисляем полное время интервала
-    // Это критически важно для коммутаторов!
+    // 1. Compute total interval time.
+    // This is critical for commutators.
     double T_total = dt_grid * (A_full_samples.size() - 1);
 
-    // Инициализируем результат
+    // Initialize result
     CMatrix Omega_total(N * N, complexd(0.0, 0.0));
 
-    // === Omega 1 (Главный член) ===
-    // Используем все точки сетки для максимальной точности интеграла (как у вас было)
+    // === Omega 1 (main term) ===
+    // Use all grid points for maximum integral accuracy.
     CMatrix Omega1 = trapezoidal_integral(A_full_samples, dt_grid, N);
     mat_add(Omega_total, Omega1, Omega_total, N);
 
     if (max_order < 2) return Omega_total;
 
-    // === Подготовка узлов для высоких порядков ===
+    // === Prepare nodes for higher-order terms ===
     int M = A_full_samples.size();
-    if (M < 7) return Omega_total; // Недостаточно точек
+    if (M < 7) return Omega_total; // Not enough points
 
-    // Берем крайние и среднюю точки для 4-го порядка (Simpson)
+    // Take endpoints and midpoint for 4th order (Simpson-style)
     CMatrix A_0 = A_full_samples[0];
     CMatrix A_mid = A_full_samples[M / 2];
     CMatrix A_end = A_full_samples[M - 1];
 
-    // === Omega 2..4 (Correction) ===
-    // Вместо случайного цикла используем проверенную формулу 4-го порядка (Simpson commutator)
-    // Formula: (T^2 / 12) * [A_end, A_0]  (для линейного приближения коммутатора)
-    // Или более точная для Симпсона: зависит от базиса.
-    // Самый простой и надежный вариант для ACC 4-го порядка на 3 точках:
+    // === Omega 2..4 (correction) ===
+    // Use a tested 4th-order commutator formula on coarse nodes.
     // Omega_4_part = (T_total^2 / 12.0) * [A(t_end), A(t_start)]
 
     if (max_order >= 2) {
         CMatrix comm = commutator(A_end, A_0, N);
-        // Масштаб T^2 !
+        // Scale by T^2
         mat_scale_inplace(comm, N, complexd(T_total * T_total / 12.0, 0.0));
 
-        // Добавляем к общей сумме
+        // Add to total
         mat_add(Omega_total, comm, Omega_total, N);
     }
 
-    // === Omega 6 (Special function) ===
-    // Ваша функция compute_Omega6_ACC ожидает вектор матриц A.
-    // Судя по коэффициентам (1/120...), это формула, требующая умножения на T (или T^k).
-    // Обычно такие функции возвращают сумму взвешенных коммутаторов.
-    // Размерность A ~ 1/T. Коммутатор 5 матриц ~ 1/T^5. 
-    // Чтобы получить безразмерную Omega, нужно умножить на T^5.
-    // НО! Часто в таких реализациях подразумевается, что A уже умножено на dt или T.
-
-    // Давайте попробуем стандартный подход:
-    // Функция compute_Omega6_ACC считает сумму коэффициентов * [A...].
-    // Если она взята из статьи Blanes/Ros, то результат нужно умножить на T.
+    // === Omega 6 (special function) ===
+    // compute_Omega6_ACC expects a vector of A matrices.
+    // Note: scaling conventions depend on the source formula; kept as in the original code.
 
     if (max_order >= 6) {
         vector<CMatrix> nodes_6;
@@ -218,7 +207,7 @@ CMatrix magnus_ACC(
 
         CMatrix Om6 = compute_Omega6_ACC(nodes_6, N);
 
-        //// ИСПРАВЛЕНИЕ: Масштабируем на T^5, так как внутри коммутатор 5 матриц
+        //// NOTE: possible scaling tweak (kept commented out as in the original)
         //double scale_factor = T_total;
         //mat_scale_inplace(Om6, N, complexd(scale_factor, 0.0));
 

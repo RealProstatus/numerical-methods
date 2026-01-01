@@ -4,7 +4,7 @@
 #include <mkl_lapacke.h>
 
 namespace matrix_ops {
-    // 1. Базовые матричные операции
+    // 1. Basic matrix operations
     void matmul(const CMatrix& A, const CMatrix& B, CMatrix& C, int N,
         complexd alpha, complexd beta) {
         cblas_zgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
@@ -50,7 +50,7 @@ namespace matrix_ops {
         return result;
     }
 
-    // 2. Коммутаторы
+    // 2. Commutators
     CMatrix commutator(const CMatrix& A, const CMatrix& B, int N) {
         CMatrix AB((size_t)N * N, complexd(0.0, 0.0));
         CMatrix BA((size_t)N * N, complexd(0.0, 0.0));
@@ -71,8 +71,9 @@ namespace matrix_ops {
         return result;
     }
 
-    // 3. Матричная экспонента
-    // 4. Функции для разложения Магнуса
+    // 3. Matrix exponential (implemented in separate modules)
+
+    // 4. Magnus expansion helpers
     double bernoulli_number(int j) {
         switch (j) {
         case 1: return -1.0 / 2.0;
@@ -97,22 +98,20 @@ namespace matrix_ops {
         return result;
     }
 
-    // ... (внутри MatrixOperations.cpp)
 
-// Изменяем реализацию
+    // Updated implementation: cache is provided from the outside (no static cache).
     vector<CMatrix> compute_S_n_j(int n, int j,
         const vector<CMatrix>& Omega,
         const vector<CMatrix>& A_samples,
         int N,
-        std::map<std::pair<int, int>, vector<CMatrix>>& cache) // <--- Аргумент по ссылке
+        std::map<std::pair<int, int>, vector<CMatrix>>& cache) // passed by reference
     {
-        // 1. УБРАЛИ static map внутри функции.
-        // Теперь мы используем cache, который нам передали.
+        // We removed static cache inside the function; use the caller-provided cache.
 
         auto key = std::make_pair(n, j);
         auto it = cache.find(key);
         if (it != cache.end()) {
-            return it->second; // Возвращаем из переданного кэша
+            return it->second; // Return from caller-provided cache
         }
 
         vector<CMatrix> S_samples(A_samples.size());
@@ -130,7 +129,7 @@ namespace matrix_ops {
                 CMatrix sum((size_t)N * N, complexd(0.0, 0.0));
                 for (int m = 1; m <= n - j; ++m) {
 
-                    // 2. ВАЖНО: Проверяем кэш перед рекурсией (это уже есть выше, но здесь для ясности)
+                    // IMPORTANT: check cache before recursive call
                     auto key_sub = std::make_pair(n - m, j - 1);
                     vector<CMatrix> S_nm_j1_samples;
 
@@ -139,9 +138,9 @@ namespace matrix_ops {
                         S_nm_j1_samples = it2->second;
                     }
                     else {
-                        // ПЕРЕДАЕМ cache ДАЛЬШЕ В РЕКУРСИЮ!
+                        // Pass cache further into recursion.
                         S_nm_j1_samples = compute_S_n_j(n - m, j - 1, Omega, A_samples, N, cache);
-                        // cache сам обновится внутри, так как передан по ссылке
+                        // cache is updated inside because it is passed by reference
                     }
 
                     CMatrix comm = commutator(Omega[m], S_nm_j1_samples[t], N);
@@ -151,14 +150,14 @@ namespace matrix_ops {
             }
         }
 
-        // Сохраняем в переданный кэш
+        // Store into caller-provided cache
         cache[key] = S_samples;
         return S_samples;
     }
 
     CMatrix matrix_exp_special(const CMatrix& A, int N, double dt)
     {
-        // Копируем A, т.к. zheev разрушает input
+        // Copy A because zheev overwrites the input.
         CMatrix copy = mat_copy(A);
 
         std::vector<double> w(N);  // Real eigenvalues
@@ -167,10 +166,10 @@ namespace matrix_ops {
 
         if (info != 0) {
             std::cerr << "LAPACKE_zheev failed with info = " << info << std::endl;
-            return utils::eye(N);  // Возврат I на ошибке
+            return utils::eye(N);  // Return I on error
         }
 
-        // Создаём diag exp(-i w_k dt)
+        // Create diagonal exp(-i w_k dt)
         CMatrix exp_D((size_t)N * N, complexd(0.0, 0.0));
         for (int k = 0; k < N; ++k) {
             double phase = -w[k] * dt;
@@ -182,8 +181,8 @@ namespace matrix_ops {
         matmul(copy, exp_D, temp, N);
 
         // result = temp * V^\dagger = V exp_D V^\dagger
-        // V^\dagger = conj transpose of V
-        // Но поскольку V in row-major, для conj trans используем cblas_zgemm с CblasConjTrans
+        // V^\dagger is the conjugate transpose of V.
+        // Since V is row-major, use cblas_zgemm with CblasConjTrans.
         const complexd alpha(1.0, 0.0);
         const complexd beta(0.0, 0.0);
 
@@ -203,7 +202,7 @@ namespace matrix_ops {
         for (int i = 0; i < N; ++i)
             for (int j = 0; j < N; ++j)
             {
-                // транспонирование + комплексное сопряжение
+                // transpose + complex conjugation
                 Adag[utils::idx(i, j, N)] = std::conj(A[utils::idx(j, i, N)]);
             }
         return Adag;
@@ -229,12 +228,11 @@ namespace matrix_ops {
         return (err < tol);
     }
 
-    // В MatrixOperations.cpp
     double max_element_diff(const CMatrix& A, const CMatrix& B, int N) {
         double max_diff = 0.0;
-        // Предполагаем, что CMatrix хранит N*N элементов
+        // Assume CMatrix stores N*N elements
         for (int i = 0; i < N * N; ++i) {
-            // std::abs для complexd возвращает его модуль
+            // std::abs(complex) returns its magnitude
             double current_diff = std::abs(A[i] - B[i]);
             if (current_diff > max_diff) {
                 max_diff = current_diff;
@@ -244,14 +242,13 @@ namespace matrix_ops {
     }
 
     double max_eigenvalue_modulus_hermitian(const CMatrix& M, int N) {
-        // 1. LAPACKE_zheev меняет входную матрицу, поэтому делаем копию
+        // 1. LAPACKE_zheev overwrites the input matrix, so we copy it
         std::vector<complexd> A_copy = M;
 
-        // 2. Вектор для хранения собственных чисел (они действительны)
+        // 2. Eigenvalues are real for a Hermitian matrix
         std::vector<double> W(N);
 
-        // 3. Вызов LAPACKE_zheev (z - complex, he - hermitian, ev - eigenvalues)
-        // 'N' - только собственные числа, 'U' - используется верхний треугольник
+        // 3. LAPACKE_zheev: 'N' = eigenvalues only, 'U' = upper triangle stored
         lapack_int info = LAPACKE_zheev(
             LAPACK_ROW_MAJOR,
             'N',              // 'N': compute eigenvalues only
@@ -268,7 +265,7 @@ namespace matrix_ops {
             return 0.0;
         }
 
-        // 4. Находим максимальный модуль среди собственных чисел
+        // 4. Max absolute eigenvalue
         double max_abs_eig = 0.0;
         for (double eig : W) {
             max_abs_eig = std::max(max_abs_eig, std::abs(eig));

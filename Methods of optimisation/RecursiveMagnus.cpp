@@ -14,14 +14,14 @@ CMatrix magnus_expansion(double t0, double t1, double integration_dt, int N,
     const CMatrix& H0, const CMatrix& H_mod,
     double eps0, double W, int max_n)
 {
-    // 1. Генерируем сэмплы A(t)
+    // 1. Generate A(t) samples
     vector<CMatrix> A_samples = generate_samples(t0, t1, integration_dt, N, H0, H_mod, eps0, W);
     int steps = A_samples.size();
 
-    // Для трапеций нам не обязательно четное количество шагов, но
-    // если вдруг steps окажется 0 или 1, цикл просто не выполнится.
+    // Trapezoids do not require an even number of steps,
+    // but if steps is 0 or 1, the integration loop will not run.
 
-    // 2. Хранилище истории (Инициализация нулями)
+    // 2. History storage (initialized with zeros)
     vector<vector<CMatrix>> Omega_history(max_n + 1, vector<CMatrix>(steps));
     CMatrix zero_mat((size_t)N * N, complexd(0.0, 0.0));
 
@@ -32,7 +32,7 @@ CMatrix magnus_expansion(double t0, double t1, double integration_dt, int N,
     }
 
     // ============================================================
-    // === Omega_1(t) : Интеграл от A(t) методом трапеций ===
+    // === Omega_1(t): trapezoidal integral of A(t) ===
     // ============================================================
     // Omega_1(t_i) = Omega_1(t_{i-1}) + (dt/2) * [A(t_{i-1}) + A(t_i)]
 
@@ -51,15 +51,15 @@ CMatrix magnus_expansion(double t0, double t1, double integration_dt, int N,
     }
 
     // ============================================================
-    // === Omega_n(t) : Рекурсия ===
+    // === Omega_n(t): recursion ===
     // ============================================================
     for (int n = 2; n <= max_n; ++n) {
 
         vector<CMatrix> Integrand(steps, zero_mat);
 
-        // 1. Считаем подынтегральное выражение S_n (коммутаторы) для всех точек t
+        // 1. Build integrand S_n (commutators) for all time points
         for (int t = 0; t < steps; ++t) {
-            // Кэш теперь живет внутри цикла по t, так как для каждого момента времени свои матрицы
+            // Cache lives inside the time loop because each time point has its own matrices
             using SKey = std::pair<int, int>;
             std::map<SKey, CMatrix> S_cache;
 
@@ -97,7 +97,7 @@ CMatrix magnus_expansion(double t0, double t1, double integration_dt, int N,
             }
         }
 
-        // 2. Интегрируем S_n методом трапеций, чтобы получить Omega_n
+        // 2. Integrate S_n with trapezoids to get Omega_n
         for (int i = 1; i < steps; ++i) {
             // step_val = Integrand[i-1] + Integrand[i]
             CMatrix step_val = mat_copy(Integrand[i - 1]);
@@ -111,7 +111,7 @@ CMatrix magnus_expansion(double t0, double t1, double integration_dt, int N,
         }
     }
 
-    // Суммируем все Omega_n в конечной точке (последний индекс)
+    // Sum all Omega_n at the final time point (last index)
     CMatrix Omega_total((size_t)N * N, complexd(0.0, 0.0));
     int last_idx = steps - 1;
 

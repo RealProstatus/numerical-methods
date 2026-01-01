@@ -11,18 +11,6 @@ using namespace runge_kutta_simple;
 using complexd = complex<double>;
 using CMatrix = vector<complexd>;
 
-// void print_matrix(const CMatrix& mat, int N, const string& name) {
-//     cout << name << ":\n";
-//     for (int i = 0; i < N; ++i) {
-//         for (int j = 0; j < N; ++j) {
-//             complexd val = mat[i * N + j];
-//             cout << "(" << setprecision(6) << val.real() << ", " << val.imag() << ") ";
-//         }
-//         cout << "\n";
-//     }
-//     cout << "\n";
-// }
-
 int main() {
     const int N = 100;
     const double dt = 1e-5;
@@ -649,7 +637,6 @@ int main() {
             CMatrix U_exact = matrix_ops::expm_pade_eigen(Omega_exact, N);
             auto end_exact = chrono::high_resolution_clock::now();
             auto duration_exact = chrono::duration_cast<chrono::microseconds>(end_exact - start_exact);
-            double time_exact_ms = duration_exact.count() / 1000.0;
 
             // Method 1: Runge-Kutta with dt = 1e-5
             {

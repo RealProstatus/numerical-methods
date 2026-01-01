@@ -18,32 +18,21 @@ namespace matrix_ops {
     CMatrix mat_copy(const CMatrix& A);
     CMatrix mat_scale(const CMatrix& A, complexd alpha);
 
-    // ВЫЧИСЛЕНИЕ КОММУТАТОРА: [A, B] = A*B - B*A
-    // A, B - входные матрицы, N - размер
-    // Возвращает: матрицу-коммутатор
+    // Commutator: [A, B] = A*B - B*A
     CMatrix commutator(const CMatrix& A, const CMatrix& B, int N);
 
-    // ИТЕРАЦИОННЫЙ КОММУТАТОР: ad_X^k(Y) = [X, [X, ...[X, Y]...]] (k раз)
-    // X, Y - входные матрицы, k - количество итераций, N - размер
-    // Возвращает: результат k-кратного коммутирования
+    // Iterated commutator: ad_X^k(Y) = [X, [X, ...[X, Y]...]] (k times)
     CMatrix iterated_commutator(const CMatrix& X, const CMatrix& Y, int k, int N);
 
-    // РАЗЛОЖЕНИЕ ТЕЙЛОРА: Вычисляет exp(A) ≈ I + A + A² / 2!+ A³ / 3!+ ... + Aⁿ / n!
 
 
-    // Новые функции для разложения Магнуса
+    // Magnus expansion helpers
     double bernoulli_number(int j);
 
-    // ИТЕРАЦИОННЫЙ КОММУТАТОР ДЛЯ МАГНУСА: ad_?^k(A) = [?, [?, ...[?, A]...]]
-    // Omega - оператор, A - матрица, k - степень коммутирования, N - размер
-    // Возвращает: результат применения ad-оператора k раз
+    // Iterated commutator used in Magnus: ad_Omega^k(A)
     CMatrix compute_ad_Omega_k(const CMatrix& Omega, const CMatrix& A, int k, int N);
 
-    // ВЫЧИСЛЕНИЕ S_n^(j) ДЛЯ РАЗЛОЖЕНИЯ МАГНУСА (рекурсивная формула)
-    // n - порядок члена разложения, j - индекс в рекурсии
-    // Omega - вектор вычисленных ??...??, A_samples - выборки A(t) во времени
-    // N - размер матриц
-    // Возвращает: вектор матриц S_n^(j) для всех моментов времени
+    // Compute S_n^(j) for Magnus expansion (recursive formula).
     vector<CMatrix> compute_S_n_j(int n, int j,
         const vector<CMatrix>& Omega,
         const vector<CMatrix>& A_samples,
