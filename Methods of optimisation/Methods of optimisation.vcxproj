@@ -145,6 +145,8 @@
     <ClCompile Include="Formula314Magnus.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="MatrixOperations.cpp" />
+    <ClCompile Include="PiecewiseMagnus.cpp" />
+    <ClCompile Include="PiecewiseMagnus.h" />
     <ClCompile Include="RecursiveMagnus.cpp" />
     <ClCompile Include="TaylorExpm.cpp" />
     <ClCompile Include="Utils.cpp" />
