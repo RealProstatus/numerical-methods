@@ -3,6 +3,10 @@
 #include <Eigen/Dense>
 #include <unsupported/Eigen/MatrixFunctions>
 
+//#include <D:/Unstable magnus/eigen/Eigen/Dense>
+//#include <D:/Unstable magnus/eigen/unsupported/Eigen/MatrixFunctions>
+//#include <D:/Unstable magnus/eigen/Eigen/IterativeLinearSolvers>
+
 namespace matrix_ops {
     CMatrix expm_pade_eigen(const CMatrix& A, int N) {
         using namespace Eigen;

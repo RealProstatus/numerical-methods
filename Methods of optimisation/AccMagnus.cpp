@@ -151,66 +151,36 @@ namespace matrix_ops {
 // =================== CORRECTED Magnus ACC ================
 // =========================================================
 
-CMatrix magnus_ACC(
-    const vector<CMatrix>& A_full_samples,
-    double dt_grid,
-    int N,
-    int max_order)
+CMatrix magnus_ACC(const vector<CMatrix>& A_full_samples, double dt_grid, int N, int max_order)
 {
-    // 1. Compute total interval time.
-    // This is critical for commutators.
     double T_total = dt_grid * (A_full_samples.size() - 1);
-
-    // Initialize result
     CMatrix Omega_total(N * N, complexd(0.0, 0.0));
 
-    // === Omega 1 (main term) ===
-    // Use all grid points for maximum integral accuracy.
-    CMatrix Omega1 = trapezoidal_integral(A_full_samples, dt_grid, N);
+    //CMatrix Omega1 = trapezoidal_integral(A_full_samples, dt_grid, N);
+    CMatrix Omega1 = simpson_integral(A_full_samples, dt_grid, N);
     mat_add(Omega_total, Omega1, Omega_total, N);
-
     if (max_order < 2) return Omega_total;
 
-    // === Prepare nodes for higher-order terms ===
     int M = A_full_samples.size();
-    if (M < 7) return Omega_total; // Not enough points
+    if (M < 3) return Omega_total; // Для 2 и 4 порядка нужно минимум 3 точки
 
-    // Take endpoints and midpoint for 4th order (Simpson-style)
     CMatrix A_0 = A_full_samples[0];
     CMatrix A_mid = A_full_samples[M / 2];
     CMatrix A_end = A_full_samples[M - 1];
 
-    // === Omega 2..4 (correction) ===
-    // Use a tested 4th-order commutator formula on coarse nodes.
-    // Omega_4_part = (T_total^2 / 12.0) * [A(t_end), A(t_start)]
-
     if (max_order >= 2) {
         CMatrix comm = commutator(A_end, A_0, N);
-        // Scale by T^2
         mat_scale_inplace(comm, N, complexd(T_total * T_total / 12.0, 0.0));
-
-        // Add to total
         mat_add(Omega_total, comm, Omega_total, N);
     }
 
-    // === Omega 6 (special function) ===
-    // compute_Omega6_ACC expects a vector of A matrices.
-    // Note: scaling conventions depend on the source formula; kept as in the original code.
-
-    if (max_order >= 6) {
+    if (max_order >= 6 && M >= 7) { // <-- Добавили проверку M >= 7 сюда
         vector<CMatrix> nodes_6;
         for (int k = 0; k <= 6; ++k) {
             int idx = (k * (M - 1)) / 6;
             nodes_6.push_back(A_full_samples[idx]);
         }
-
-
         CMatrix Om6 = compute_Omega6_ACC(nodes_6, N);
-
-        //// NOTE: possible scaling tweak (kept commented out as in the original)
-        //double scale_factor = T_total;
-        //mat_scale_inplace(Om6, N, complexd(scale_factor, 0.0));
-
         mat_add(Omega_total, Om6, Omega_total, N);
     }
 
@@ -218,3 +188,16 @@ CMatrix magnus_ACC(
 }
 
 
+//  ------ Generation of permutations {2,3,...,n} ------ 
+void generate_permutations(vector<int>& base, vector<vector<int>>& result, int start) {
+    int n = base.size();
+    if (start == n) {
+        result.push_back(base);
+        return;
+    }
+    for (int i = start; i < n; ++i) {
+        swap(base[start], base[i]);
+        generate_permutations(base, result, start + 1);
+        swap(base[start], base[i]);
+    }
+}

@@ -8,55 +8,23 @@ using namespace matrix_ops;
 // ===================== Magnus via formula 3.14 ===============
 // =============================================================
 
-CMatrix magnus_3_14(
-    double t0, double t1, double dt,
-    int N, const CMatrix& H0, const CMatrix& H_mod,
-    double eps0, double W)
+CMatrix magnus_3_14(double t0, double t1, double dt, int N, const CMatrix& H0, const CMatrix& H_mod, double eps0, double W)
 {
-    // Sample A(t) = H0 + f(t) * H_mod
-    vector<CMatrix> A = generate_samples(t0, t1, dt, N, H0, H_mod, eps0, W);
+    //vector<CMatrix> A = generate_samples(t0, t1, dt, N, H0, H_mod, eps0, W);
+    double h = t1 - t0;
+    double t_half = 0.5 * (t0 + t1);
 
-    double h = t1 - t0;                 // integration step
-    double t_half = 0.5 * (t0 + t1);    // t_{1/2}
+    auto f_fun = [&](double t) { return eps0 * std::cos(W * t); };
+    auto fp_fun = [&](double t) { return -eps0 * W * std::sin(W * t); };
+    auto f2_fun = [&](double t) { return -eps0 * W * W * std::cos(W * t); };
 
-    // f(t), f'(t), f''(t) are computed analytically here.
-    // NOTE: generate_samples builds A_k = H0 + f_k * H_mod (with -i factor elsewhere),
-    // but here we evaluate f(.) directly.
-
-    auto f_fun = [&](double t)
-        {
-            return eps0 * std::sin(W * t);
-        };
-
-    auto fp_fun = [&](double t)
-        {
-            return eps0 * W * std::cos(W * t);
-        };
-
-    auto f2_fun = [&](double t)
-        {
-            return -eps0 * W * W * std::sin(W * t);
-        };
-
-    // Values used in formula (3.14)
     double f_t1 = f_fun(t1);
     double f_half = f_fun(t_half);
     double fp_half = fp_fun(t_half);
     double f2_half = f2_fun(t_half);
     double f2_t1 = f2_fun(t1);
 
-    // Compute Ω using formula (3.14)
-    CMatrix Omega = compute_Omega_3_14(
-        H0, H_mod,
-        h,
-        f_t1,
-        f_half,
-        fp_half,
-        f2_half,
-        f2_t1,
-        N
-    );
-
+    CMatrix Omega = compute_Omega_3_14(H0, H_mod, h, f_t1, f_half, fp_half, f2_half, f2_t1, N);
     return Omega;
 }
 

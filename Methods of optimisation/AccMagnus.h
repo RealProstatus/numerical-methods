@@ -19,3 +19,5 @@ namespace matrix_ops {
 }
 
 
+//  ------ Generation of permutations {2,3,...,n} ------ 
+void generate_permutations(vector<int>& base, vector<vector<int>>& result, int start = 0);

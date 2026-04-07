@@ -11,695 +11,731 @@ using namespace runge_kutta_simple;
 using complexd = complex<double>;
 using CMatrix = vector<complexd>;
 
+const double PI = 3.14159265358979323846;
+
 int main() {
     const int N = 100;
     const double dt = 1e-5;
     const double T = 1.0;
     const double diag_min = 10.0;
 
-    // =====================================================================
-    // Generate and save test matrices
-    // =====================================================================
+    // Вводим параметры динамического H(t)
+    const double W = 2.0 * PI; // 1 Hz
+    const double eps0 = 1.0;
+
     std::cout << "Generating test matrices N=" << N << "...\n";
 
-    // Test matrix for all experiments
-    CMatrix H_test = utils::generate_hermitian_matrix(N, diag_min);
-    utils::save_matrix(H_test, N, "H_test_matrix.txt");
-    std::cout << "Test matrix saved to H_test_matrix.txt\n";
+    // H(t) = H0_test + Hmod_test * cos(W*t)
+    CMatrix H0_test = utils::generate_hermitian_matrix(N, diag_min);
+    CMatrix Hmod_test = utils::generate_hermitian_matrix(N, diag_min / 2.0);
 
-    // Generate spectral matrices for stability experiments
-    std::cout << "Generating spectral matrices for stability experiments...\n";
-    std::vector<double> condition_numbers = {10.0, 100.0, 1000.0, 10000.0};
+    std::vector<double> condition_numbers = { 10.0, 100.0, 1000.0, 10000.0 };
     std::vector<CMatrix> spectral_matrices;
     std::vector<CMatrix> spectral_V_matrices;
     std::vector<CMatrix> spectral_D_matrices;
 
+    // Второе слагаемое для спектральных тестов (чтобы H(t) зависело от времени)
+    CMatrix Hmod_spectral = utils::generate_hermitian_matrix(N, 1.0);
+
     for (size_t i = 0; i < condition_numbers.size(); ++i) {
         double kappa = condition_numbers[i];
         auto [H, V, D] = utils::generate_spectral_matrix(N, kappa, 3.0);
-
-        std::string filename = "H_spectral_kappa_" + std::to_string((int)kappa) + ".txt";
-        utils::save_matrix(H, N, filename);
-        std::cout << "Spectral matrix with kappa=" << kappa << " saved to " << filename << "\n";
-
         spectral_matrices.push_back(H);
         spectral_V_matrices.push_back(V);
         spectral_D_matrices.push_back(D);
     }
 
-    // =====================================================================
-    // EXPERIMENTS RESULTS FILE
-    // =====================================================================
     std::ofstream results_txt("magnus_experiment_results.txt");
-    if (!results_txt.is_open()) {
-        std::cerr << "Error opening magnus_experiment_results.txt" << std::endl;
-        return 1;
-    }
     results_txt << std::scientific << std::setprecision(12);
     std::cout << std::scientific << std::setprecision(12);
 
+    //// =====================================================================
+    //// EXPERIMENT 1: Omega Accuracy Comparison (H(t) dependent)
+    //// =====================================================================
+    //const double T_int = dt;
+    //const double integration_dt = dt * 0.01; // НА 4 ПОРЯДКА МЕНЬШЕ
+
+    //// ТАК КАК НЕТ АНАЛИТИЧЕСКОГО РЕШЕНИЯ ДЛЯ [A,B]!=0, используем сверхточный Магнус 10 порядка как Эталон
+    //std::cout << "Computing Fine-Grid Reference Omega for Exp 1...\n";
+    //CMatrix Omega_ref_dt = magnus_expansion(0.0, T_int, integration_dt * 0.1, N, H0_test, Hmod_test, eps0, W, 10);
+
+    //vector<CMatrix> A_samples = generate_samples(0.0, T_int, integration_dt, N, H0_test, Hmod_test, eps0, W);
+    //CMatrix H0_anti_herm = matrix_ops::mat_scale(H0_test, complexd(0.0, -1.0));
+    //CMatrix Hmod_anti_herm = matrix_ops::mat_scale(Hmod_test, complexd(0.0, -1.0));
+
+    //results_txt << "=================================================================\n";
+    //results_txt << "EXPERIMENT 1: Comparison of Omega Matrix Calculation Accuracy (H(t) = A + B cos(Wt))\n";
+    //results_txt << "Reference: Recursive Magnus 10th order on fine grid\n";
+    //results_txt << "-----------------------------------------------------------------\n";
+    //results_txt << "Method | K | Max Element Diff | Max Eig Diff | Time (ms)\n";
+    //results_txt << "-----------------------------------------------------------------\n";
+
+    //// 1. Classic Magnus Expansion
+    //for (int k = 1; k <= 2; ++k) {
+    //    auto start = chrono::high_resolution_clock::now();
+    //    CMatrix Omega_calc = magnus_classic(0.0, T_int, integration_dt, N, H0_test, Hmod_test, eps0, W, k);
+    //    auto end = chrono::high_resolution_clock::now();
+    //    double time_ms = chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0;
+
+    //    CMatrix diff(N * N, complexd(0.0, 0.0));
+    //    matrix_ops::mat_sub(Omega_calc, Omega_ref_dt, diff, N);
+    //    results_txt << "Classic | " << k << " | " << matrix_ops::max_element_diff(Omega_calc, Omega_ref_dt, N)
+    //        << " | " << matrix_ops::max_eigenvalue_modulus_hermitian(diff, N) << " | " << time_ms << "\n";
+    //}
+
+    //// 2. ACC Expansion
+    //for (int k = 1; k <= 5; ++k) {
+    //    auto start = chrono::high_resolution_clock::now();
+    //    CMatrix Omega_calc = magnus_ACC(A_samples, integration_dt, N, k);
+    //    auto end = chrono::high_resolution_clock::now();
+    //    double time_ms = chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0;
+
+    //    CMatrix diff(N * N, complexd(0.0, 0.0));
+    //    matrix_ops::mat_sub(Omega_calc, Omega_ref_dt, diff, N);
+    //    results_txt << "ACC | " << k << " | " << matrix_ops::max_element_diff(Omega_calc, Omega_ref_dt, N)
+    //        << " | " << matrix_ops::max_eigenvalue_modulus_hermitian(diff, N) << " | " << time_ms << "\n";
+    //}
+
+    //// 3. Recursive Expansion
+    //for (int k = 1; k <= 8; ++k) {
+    //    auto start = chrono::high_resolution_clock::now();
+    //    CMatrix Omega_calc = magnus_expansion(0.0, T_int, integration_dt, N, H0_test, Hmod_test, eps0, W, k);
+    //    auto end = chrono::high_resolution_clock::now();
+    //    double time_ms = chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0;
+
+    //    CMatrix diff(N * N, complexd(0.0, 0.0));
+    //    matrix_ops::mat_sub(Omega_calc, Omega_ref_dt, diff, N);
+    //    results_txt << "Recursive | " << k << " | " << matrix_ops::max_element_diff(Omega_calc, Omega_ref_dt, N)
+    //        << " | " << matrix_ops::max_eigenvalue_modulus_hermitian(diff, N) << " | " << time_ms << "\n";
+    //}
+
+    //// 4. Formula 3.14
+    //{
+    //    auto start = chrono::high_resolution_clock::now();
+    //    CMatrix Omega_314 = magnus_3_14(0.0, T_int, integration_dt, N, H0_anti_herm, Hmod_anti_herm, eps0, W);
+    //    auto end = chrono::high_resolution_clock::now();
+    //    double time_ms = chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0;
+
+    //    CMatrix diff(N * N, complexd(0.0, 0.0));
+    //    matrix_ops::mat_sub(Omega_314, Omega_ref_dt, diff, N);
+    //    results_txt << "Formula 3.14 | 4 | " << matrix_ops::max_element_diff(Omega_314, Omega_ref_dt, N)
+    //        << " | " << matrix_ops::max_eigenvalue_modulus_hermitian(diff, N) << " | " << time_ms << "\n";
+    //}
+
+    //// =====================================================================
+    //// EXPERIMENT 2: Matrix Exponentiation Methods for Dynamic Omega
+    //// =====================================================================
+    //{
+    //    std::ofstream exp2_results("experiment2_results.txt");
+    //    exp2_results << std::scientific << std::setprecision(12);
+    //    std::cout << "\nRunning Experiment 2: Matrix Exponentiation Comparison...\n";
+
+    //    exp2_results << "=================================================================\n";
+    //    exp2_results << "EXPERIMENT 2: Comparison of exp(Omega) calculation accuracy\n";
+    //    exp2_results << "Omega is taken from Fine-Grid Magnus (Exp 1)\n";
+    //    exp2_results << "Reference: Eigen-based Pade approximation (expm_pade_eigen)\n";
+    //    exp2_results << "-----------------------------------------------------------------\n";
+    //    exp2_results << "Method | Parameters | Max Element Diff | Max Eig Diff | Time (ms)\n";
+    //    exp2_results << "-----------------------------------------------------------------\n";
+
+    //    // Берем Omega_ref_dt из Эксперимента 1 как входные данные
+    //    CMatrix U_ref = matrix_ops::expm_pade_eigen(Omega_ref_dt, N);
+
+    //    // 1. Taylor Expansion
+    //    std::vector<int> taylor_terms = { 1, 2, 3, 4, 5, 6, 7, 8 ,9 , 10, 20, 30 };
+    //    for (int terms : taylor_terms) {
+    //        auto start = chrono::high_resolution_clock::now();
+    //        CMatrix U_calc = matrix_ops::expm_taylor(Omega_ref_dt, N, terms);
+    //        auto end = chrono::high_resolution_clock::now();
+    //        double time_ms = chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0;
+
+    //        CMatrix diff(N * N, complexd(0.0, 0.0));
+    //        matrix_ops::mat_sub(U_calc, U_ref, diff, N);
+    //        exp2_results << "Taylor | terms=" << terms << " | " << matrix_ops::max_element_diff(U_calc, U_ref, N)
+    //            << " | " << matrix_ops::max_eigenvalue_modulus_hermitian(diff, N) << " | " << time_ms << "\n";
+    //    }
+
+    //    // 2. Chebyshev Expansion
+    //    std::vector<int> cheb_terms = { 1, 2, 3, 4, 5, 6, 7, 8 ,9 ,  10, 15, 25 };
+    //    for (int M : cheb_terms) {
+    //        auto start = chrono::high_resolution_clock::now();
+    //        CMatrix U_calc = matrix_ops::expm_cheb(Omega_ref_dt, N, M);
+    //        auto end = chrono::high_resolution_clock::now();
+    //        double time_ms = chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0;
+
+    //        CMatrix diff(N * N, complexd(0.0, 0.0));
+    //        matrix_ops::mat_sub(U_calc, U_ref, diff, N);
+    //        exp2_results << "Chebyshev | M=" << M << " | " << matrix_ops::max_element_diff(U_calc, U_ref, N)
+    //            << " | " << matrix_ops::max_eigenvalue_modulus_hermitian(diff, N) << " | " << time_ms << "\n";
+    //    }
+
+    //    // 3. Стандартный Pade (если реализован отдельно от Eigen)
+    //    {
+    //        auto start = chrono::high_resolution_clock::now();
+    //        CMatrix U_calc = matrix_ops::expm_pade_eigen(Omega_ref_dt, N); // В данном случае совпадет с референсом
+    //        auto end = chrono::high_resolution_clock::now();
+    //        double time_ms = chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0;
+    //        exp2_results << "Eigen-Pade | -- | 0.000000e+00 | 0.000000e+00 | " << time_ms << "\n";
+    //    }
+
+    //    exp2_results.close();
+    //    std::cout << "Experiment 2 results written to experiment2_results.txt\n";
+    //}
+
+    //// =====================================================================
+    //// EXPERIMENT 3: ODE Solving U'(t) = -iH(t)*U(t)
+    //// =====================================================================
+    //{
+    //    std::ofstream exp3_results("experiment3_results.txt");
+    //    exp3_results << std::scientific << std::setprecision(12);
+    //    std::cout << "\nRunning Experiment 3: ODE Solving Comparison (H(t) dependent)...\n";
+
+    //    // ГЕНЕРИРУЕМ ЭТАЛОН: Сверхточный РК4 (шаг 1e-6)
+    //    double fine_rk_dt = 1e-6;
+    //    int exact_steps = (int)std::round(T / fine_rk_dt);
+    //    CMatrix U_exact = utils::eye(N);
+
+    //    std::cout << "Computing Exact U(T) via fine RK4 (dt=1e-6)... ";
+    //    auto start_exact = chrono::high_resolution_clock::now();
+    //    for (int step = 0; step < exact_steps; ++step) {
+    //        U_exact = runge_kutta_simple::runge_kutta_step(step * fine_rk_dt, H0_test, Hmod_test, W, U_exact, fine_rk_dt, N);
+    //    }
+    //    auto end_exact = chrono::high_resolution_clock::now();
+    //    std::cout << "Done in " << chrono::duration_cast<chrono::microseconds>(end_exact - start_exact).count() / 1000.0 << " ms\n";
+
+    //    // Method 1: Standard Runge-Kutta
+    //    {
+    //        double rk_dt = 1e-4; // Обычный шаг
+    //        int num_steps = (int)std::round(T / rk_dt);
+
+    //        auto start_rk = chrono::high_resolution_clock::now();
+    //        CMatrix U_rk = utils::eye(N);
+    //        for (int step = 0; step < num_steps; ++step) {
+    //            U_rk = runge_kutta_simple::runge_kutta_step(step * rk_dt, H0_test, Hmod_test, W, U_rk, rk_dt, N);
+    //        }
+    //        auto end_rk = chrono::high_resolution_clock::now();
+    //        double time_rk_ms = chrono::duration_cast<chrono::microseconds>(end_rk - start_rk).count() / 1000.0;
+
+    //        CMatrix diff_rk(N * N, complexd(0.0, 0.0));
+    //        matrix_ops::mat_sub(U_rk, U_exact, diff_rk, N);
+    //        exp3_results << "Runge-Kutta dt=1e-4 | " << matrix_ops::max_element_diff(U_rk, U_exact, N) << " | " << time_rk_ms << "\n";
+    //    }
+
+    //    // Method 2: Piecewise Magnus ACC + Chebyshev
+    //    {
+    //        // Используем macro_dt, определяющий размер одного "куска" Магнуса
+    //        double macro_dt = 0.01;
+
+    //        auto start_magnus = chrono::high_resolution_clock::now();
+
+    //        // Вызов универсального солвера, который внутри себя разбивает T на шаги macro_dt,
+    //        // для каждого шага считает локальную Омегу и перемножает экспоненты.
+    //        CMatrix U_magnus = piecewise_magnus_solver(0.0, T, macro_dt, N, H0_test, Hmod_test, eps0, W, 4);
+
+    //        auto end_magnus = chrono::high_resolution_clock::now();
+    //        double time_magnus_ms = chrono::duration_cast<chrono::microseconds>(end_magnus - start_magnus).count() / 1000.0;
+
+    //        CMatrix diff_magnus(N * N, complexd(0.0, 0.0));
+    //        matrix_ops::mat_sub(U_magnus, U_exact, diff_magnus, N);
+
+    //        exp3_results << "Piecewise Magnus ACC | " << matrix_ops::max_element_diff(U_magnus, U_exact, N) << " | " << time_magnus_ms << "\n";
+    //    }
+    //    exp3_results.close();
+    //}
+
+    //// =====================================================================
+    //// ============= EXPERIMENT 4: Omega Stability Analysis ===============
+    //// =====================================================================
+    //{
+    //    std::ofstream exp4_results("experiment4_results.txt");
+    //    if (!exp4_results.is_open()) {
+    //        std::cerr << "Error opening experiment4_results.txt" << std::endl;
+    //        return 1;
+    //    }
+    //    exp4_results << std::scientific << std::setprecision(12);
+    //    std::cout << "\nRunning Experiment 4: Omega Stability Analysis (H(t) dependent)...\n";
+
+    //    exp4_results << "=================================================================\n";
+    //    exp4_results << "EXPERIMENT 4: Omega Stability Analysis for Spectral Matrices (H(t) = A + B cos(Wt))\n";
+    //    exp4_results << "N=" << N << ", dt=" << dt << "\n";
+    //    exp4_results << "Reference: Recursive Magnus 10th order on fine grid\n";
+    //    exp4_results << "-----------------------------------------------------------------\n";
+    //    exp4_results << "Kappa | Method | Max Element Diff | Max Eig Diff | Time (ms)\n";
+    //    exp4_results << "-----------------------------------------------------------------\n";
+
+    //    for (size_t mat_idx = 0; mat_idx < spectral_matrices.size(); ++mat_idx) {
+    //        double kappa = condition_numbers[mat_idx];
+    //        const CMatrix& H_A = spectral_matrices[mat_idx];
+    //        const CMatrix& H_B = Hmod_spectral;
+
+    //        std::cout << "Computing Fine-Grid Reference Omega for kappa " << kappa << "...\n";
+
+    //        // Эталонная Omega на мелкой сетке
+    //        CMatrix Omega_ref = magnus_expansion(0.0, T_int, integration_dt * 0.1, N, H_A, H_B, eps0, W, 10);
+
+    //        // Подготовка сэмплов и антиэрмитовых матриц для тестируемых методов
+    //        vector<CMatrix> A_samples_k = generate_samples(0.0, T_int, integration_dt, N, H_A, H_B, eps0, W);
+    //        CMatrix H_A_anti = matrix_ops::mat_scale(H_A, complexd(0.0, -1.0));
+    //        CMatrix H_B_anti = matrix_ops::mat_scale(H_B, complexd(0.0, -1.0));
+
+    //        // Classic Magnus (k=2)
+    //        {
+    //            auto start = chrono::high_resolution_clock::now();
+    //            CMatrix Omega_calc = magnus_classic(0.0, T_int, integration_dt, N, H_A, H_B, eps0, W, 2);
+    //            auto end = chrono::high_resolution_clock::now();
+    //            double time_ms = chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0;
+
+    //            CMatrix diff(N * N, complexd(0.0, 0.0));
+    //            matrix_ops::mat_sub(Omega_calc, Omega_ref, diff, N);
+    //            exp4_results << kappa << " | Classic | " << matrix_ops::max_element_diff(Omega_calc, Omega_ref, N)
+    //                << " | " << matrix_ops::max_eigenvalue_modulus_hermitian(diff, N) << " | " << time_ms << "\n";
+    //        }
+
+    //        // ACC Magnus (k=5)
+    //        {
+    //            auto start = chrono::high_resolution_clock::now();
+    //            CMatrix Omega_calc = magnus_ACC(A_samples_k, integration_dt, N, 5);
+    //            auto end = chrono::high_resolution_clock::now();
+    //            double time_ms = chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0;
+
+    //            CMatrix diff(N * N, complexd(0.0, 0.0));
+    //            matrix_ops::mat_sub(Omega_calc, Omega_ref, diff, N);
+    //            exp4_results << kappa << " | ACC | " << matrix_ops::max_element_diff(Omega_calc, Omega_ref, N)
+    //                << " | " << matrix_ops::max_eigenvalue_modulus_hermitian(diff, N) << " | " << time_ms << "\n";
+    //        }
+
+    //        // Recursive Magnus (k=8)
+    //        {
+    //            auto start = chrono::high_resolution_clock::now();
+    //            CMatrix Omega_calc = magnus_expansion(0.0, T_int, integration_dt, N, H_A, H_B, eps0, W, 8);
+    //            auto end = chrono::high_resolution_clock::now();
+    //            double time_ms = chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0;
+
+    //            CMatrix diff(N * N, complexd(0.0, 0.0));
+    //            matrix_ops::mat_sub(Omega_calc, Omega_ref, diff, N);
+    //            exp4_results << kappa << " | Recursive | " << matrix_ops::max_element_diff(Omega_calc, Omega_ref, N)
+    //                << " | " << matrix_ops::max_eigenvalue_modulus_hermitian(diff, N) << " | " << time_ms << "\n";
+    //        }
+
+    //        // Formula 3.14
+    //        {
+    //            auto start = chrono::high_resolution_clock::now();
+    //            CMatrix Omega_calc = magnus_3_14(0.0, T_int, integration_dt, N, H_A_anti, H_B_anti, eps0, W);
+    //            auto end = chrono::high_resolution_clock::now();
+    //            double time_ms = chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0;
+
+    //            CMatrix diff(N * N, complexd(0.0, 0.0));
+    //            matrix_ops::mat_sub(Omega_calc, Omega_ref, diff, N);
+    //            exp4_results << kappa << " | Formula 3.14 | " << matrix_ops::max_element_diff(Omega_calc, Omega_ref, N)
+    //                << " | " << matrix_ops::max_eigenvalue_modulus_hermitian(diff, N) << " | " << time_ms << "\n";
+    //        }
+    //    }
+    //    exp4_results.close();
+    //    std::cout << "Experiment 4 results written to experiment4_results.txt\n";
+    //}
+
+    //// =====================================================================
+    //// ============= EXPERIMENT 5: Matrix Exponent Stability ==============
+    //// =====================================================================
+    //{
+    //    std::ofstream exp5_results("experiment5_results.txt");
+    //    if (!exp5_results.is_open()) {
+    //        std::cerr << "Error opening experiment5_results.txt" << std::endl;
+    //        return 1;
+    //    }
+    //    exp5_results << std::scientific << std::setprecision(12);
+    //    std::cout << "\nRunning Experiment 5: Matrix Exponent Stability Analysis...\n";
+
+    //    exp5_results << "=================================================================\n";
+    //    exp5_results << "EXPERIMENT 5: Exponentiation Stability for Dynamic Omega\n";
+    //    exp5_results << "N=" << N << "\n";
+    //    exp5_results << "Reference: Eigen Pade applied to Magnus-generated Omega\n";
+    //    exp5_results << "-----------------------------------------------------------------\n";
+    //    exp5_results << "Kappa | Method | Max Element Diff | Max Eig Diff | Time (ms)\n";
+    //    exp5_results << "-----------------------------------------------------------------\n";
+
+    //    for (size_t mat_idx = 0; mat_idx < spectral_matrices.size(); ++mat_idx) {
+    //        double kappa = condition_numbers[mat_idx];
+    //        const CMatrix& H_A = spectral_matrices[mat_idx];
+    //        const CMatrix& H_B = Hmod_spectral;
+
+    //        std::cout << "Testing matrix exponent stability for kappa " << kappa << "\n";
+
+    //        // Генерируем "плохую" Omega с помощью Magnus ACC
+    //        vector<CMatrix> A_samp = generate_samples(0.0, T_int, integration_dt, N, H_A, H_B, eps0, W);
+    //        CMatrix Omega_test = magnus_ACC(A_samp, integration_dt, N, 4);
+
+    //        // Эталонное экспоненцирование через Eigen Pade
+    //        CMatrix U_ref = matrix_ops::expm_pade_eigen(Omega_test, N);
+
+    //        // Taylor method (terms = 30)
+    //        {
+    //            auto start = chrono::high_resolution_clock::now();
+    //            CMatrix U_calc = matrix_ops::expm_taylor(Omega_test, N, 30);
+    //            auto end = chrono::high_resolution_clock::now();
+    //            double time_ms = chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0;
+
+    //            CMatrix diff(N * N, complexd(0.0, 0.0));
+    //            matrix_ops::mat_sub(U_calc, U_ref, diff, N);
+    //            exp5_results << kappa << " | Taylor | " << matrix_ops::max_element_diff(U_calc, U_ref, N)
+    //                << " | " << matrix_ops::max_eigenvalue_modulus_hermitian(diff, N) << " | " << time_ms << "\n";
+    //        }
+
+    //        // Chebyshev method (M = 25)
+    //        {
+    //            auto start = chrono::high_resolution_clock::now();
+    //            CMatrix U_calc = matrix_ops::expm_cheb(Omega_test, N, 25);
+    //            auto end = chrono::high_resolution_clock::now();
+    //            double time_ms = chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0;
+
+    //            CMatrix diff(N * N, complexd(0.0, 0.0));
+    //            matrix_ops::mat_sub(U_calc, U_ref, diff, N);
+    //            exp5_results << kappa << " | Chebyshev | " << matrix_ops::max_element_diff(U_calc, U_ref, N)
+    //                << " | " << matrix_ops::max_eigenvalue_modulus_hermitian(diff, N) << " | " << time_ms << "\n";
+    //        }
+    //    }
+    //    exp5_results.close();
+    //    std::cout << "Experiment 5 results written to experiment5_results.txt\n";
+    //}
+
+    //// =====================================================================
+    //// ============= EXPERIMENT 6: ODE Stability Analysis ================
+    //// =====================================================================
+    //{
+    //    std::ofstream exp6_results("experiment6_results.txt");
+    //    if (!exp6_results.is_open()) {
+    //        std::cerr << "Error opening experiment6_results.txt" << std::endl;
+    //        return 1;
+    //    }
+    //    exp6_results << std::scientific << std::setprecision(12);
+    //    std::cout << "\nRunning Experiment 6: ODE Stability Analysis (H(t) dependent)...\n";
+
+    //    exp6_results << "=================================================================\n";
+    //    exp6_results << "EXPERIMENT 6: ODE Solution Stability Analysis for Spectral Matrices (H(t) = A + B cos(Wt))\n";
+    //    exp6_results << "N=" << N << ", T=" << T << "\n";
+    //    exp6_results << "Reference: Fine-grid RK4 (dt=1e-6)\n";
+    //    exp6_results << "-----------------------------------------------------------------\n";
+    //    exp6_results << "Kappa | Method | Max Element Diff | Max Eig Diff | Time (ms)\n";
+    //    exp6_results << "-----------------------------------------------------------------\n";
+
+    //    double fine_rk_dt = 1e-6;
+    //    int exact_steps = (int)std::round(T / fine_rk_dt);
+
+    //    for (size_t mat_idx = 0; mat_idx < spectral_matrices.size(); ++mat_idx) {
+    //        double kappa = condition_numbers[mat_idx];
+    //        const CMatrix& H_A = spectral_matrices[mat_idx];
+    //        const CMatrix& H_B = Hmod_spectral;
+
+    //        std::cout << "Computing Fine-Grid Reference U(T) for kappa " << kappa << " (This will take a while)...\n";
+
+    //        // Эталонное решение U(T)
+    //        auto start_exact = chrono::high_resolution_clock::now();
+    //        CMatrix U_exact = utils::eye(N);
+    //        for (int step = 0; step < exact_steps; ++step) {
+    //            U_exact = runge_kutta_simple::runge_kutta_step(step * fine_rk_dt, H_A, H_B, W, U_exact, fine_rk_dt, N);
+    //        }
+    //        auto end_exact = chrono::high_resolution_clock::now();
+    //        std::cout << "Done in " << chrono::duration_cast<chrono::microseconds>(end_exact - start_exact).count() / 1000.0 << " ms\n";
+
+    //        // Method 1: Runge-Kutta with normal dt = 1e-4
+    //        {
+    //            double rk_dt = 1e-4;
+    //            int num_steps = (int)std::round(T / rk_dt);
+
+    //            auto start_rk = chrono::high_resolution_clock::now();
+    //            CMatrix U_rk = utils::eye(N);
+    //            for (int step = 0; step < num_steps; ++step) {
+    //                U_rk = runge_kutta_simple::runge_kutta_step(step * rk_dt, H_A, H_B, W, U_rk, rk_dt, N);
+    //            }
+    //            auto end_rk = chrono::high_resolution_clock::now();
+    //            double time_rk_ms = chrono::duration_cast<chrono::microseconds>(end_rk - start_rk).count() / 1000.0;
+
+    //            CMatrix diff_rk(N * N, complexd(0.0, 0.0));
+    //            matrix_ops::mat_sub(U_rk, U_exact, diff_rk, N);
+    //            exp6_results << kappa << " | Runge-Kutta dt=1e-4 | " << matrix_ops::max_element_diff(U_rk, U_exact, N)
+    //                << " | " << matrix_ops::max_eigenvalue_modulus_hermitian(diff_rk, N) << " | " << time_rk_ms << "\n";
+    //        }
+
+    //        // Method 2: Piecewise Magnus ACC + Chebyshev
+    //        {
+    //            double macro_dt = 0.01; // Шаг кусочного Магнуса (в 100 раз больше Рунге-Кутты!)
+
+    //            auto start_magnus = chrono::high_resolution_clock::now();
+
+    //            // Вызов нашего нового солвера
+    //            CMatrix U_magnus = piecewise_magnus_solver(0.0, T, macro_dt, N, H_A, H_B, eps0, W, 4);
+
+    //            auto end_magnus = chrono::high_resolution_clock::now();
+    //            double time_magnus_ms = chrono::duration_cast<chrono::microseconds>(end_magnus - start_magnus).count() / 1000.0;
+
+    //            CMatrix diff_magnus(N * N, complexd(0.0, 0.0));
+    //            matrix_ops::mat_sub(U_magnus, U_exact, diff_magnus, N);
+
+    //            exp6_results << kappa << " | Piecewise Magnus ACC | "
+    //                << matrix_ops::max_element_diff(U_magnus, U_exact, N) << " | "
+    //                << matrix_ops::max_eigenvalue_modulus_hermitian(diff_magnus, N) << " | "
+    //                << time_magnus_ms << "\n";
+    //        }
+    //    }
+    //    exp6_results.close();
+    //    std::cout << "Experiment 6 results written to experiment6_results.txt\n";
+    //}
+
+    //// =====================================================================
+    //// ============= EXPERIMENT 7: RK4 Accuracy vs dt ======================
+    //// =====================================================================
+    //{
+    //    std::ofstream exp7_results("experiment7_rk4_convergence.txt");
+    //    if (!exp7_results.is_open()) {
+    //        std::cerr << "Error opening experiment7_rk4_convergence.txt" << std::endl;
+    //        return 1;
+    //    }
+    //    exp7_results << std::scientific << std::setprecision(12);
+    //    std::cout << "\nRunning Experiment 7: RK4 Accuracy vs dt...\n";
+
+    //    exp7_results << "=================================================================\n";
+    //    exp7_results << "EXPERIMENT 7: RK4 Accuracy vs Integration Step (dt)\n";
+    //    exp7_results << "H(t) = H0 + Hmod * cos(W*t), N=" << N << ", T=" << T << "\n";
+    //    exp7_results << "Reference: Piecewise Magnus Solver (macro_dt=1e-3, order=4)\n";
+    //    exp7_results << "-----------------------------------------------------------------\n";
+    //    exp7_results << "dt | Max Element Diff | Steps | Time (ms)\n";
+    //    exp7_results << "-----------------------------------------------------------------\n";
+
+    //    // 1. Считаем эталонное решение с помощью кусочного метода Магнуса
+    //    double macro_dt = 1e-3;
+    //    std::cout << "Computing reference U(T) using piecewise_magnus_solver (Fast)...\n";
+    //    auto start_exact = std::chrono::high_resolution_clock::now();
+
+    //    CMatrix U_exact = piecewise_magnus_solver(0.0, T, macro_dt, N, H0_test, Hmod_test, eps0, W, 4);
+
+    //    auto end_exact = std::chrono::high_resolution_clock::now();
+    //    std::cout << "Done in " << std::chrono::duration_cast<std::chrono::microseconds>(end_exact - start_exact).count() / 1000.0 << " ms\n\n";
+
+    //    // 2. Цикл проверки зависимости от dt для РК4
+    //    double current_dt = 1e-3;
+    //    double prev_error = 1e300; // Стартуем с огромного значения
+
+    //    // Будем уменьшать dt в 2 раза, пока не достигнем машинного предела
+    //    while (current_dt >= 1e-8) {
+    //        int steps = (int)std::round(T / current_dt);
+    //        CMatrix U_rk = utils::eye(N);
+
+    //        auto start = std::chrono::high_resolution_clock::now();
+    //        for (int step = 0; step < steps; ++step) {
+    //            U_rk = runge_kutta_simple::runge_kutta_step(step * current_dt, H0_test, Hmod_test, W, U_rk, current_dt, N);
+    //        }
+    //        auto end = std::chrono::high_resolution_clock::now();
+    //        double time_ms = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
+
+    //        // Вычисляем ошибку по отношению к эталону Магнуса
+    //        double current_error = matrix_ops::max_element_diff(U_rk, U_exact, N);
+
+    //        exp7_results << current_dt << " | " << current_error << " | " << steps << " | " << time_ms << "\n";
+    //        std::cout << "dt: " << std::setw(12) << current_dt << " | Error: " << current_error << "\n";
+
+    //        // Условие выхода: 
+    //        // Мы останавливаемся только если ошибка уже упала до нормальных значений (< 1.0) 
+    //        // И при этом начала снова расти (или перестала падать) из-за накопления машинной погрешности.
+    //        // Это позволяет "проскочить" взрывы на крупных шагах (когда error > 1.0).
+    //        if (current_error > prev_error && current_error < 1.0) {
+    //            std::cout << "-> Stopping: Accuracy plateau or degradation reached due to floating-point round-off limits.\n";
+    //            break;
+    //        }
+
+    //        prev_error = current_error;
+    //        current_dt /= 2.0;
+    //    }
+    //    exp7_results.close();
+    //    std::cout << "Experiment 7 results written to experiment7_rk4_convergence.txt\n";
+    //}
+
+    //// =====================================================================
+    //// ============= EXPERIMENT 8: Magnus macro_dt Self-Convergence ========
+    //// =====================================================================
+    //{
+    //    std::ofstream exp8_results("experiment8_macro_dt_self_conv.txt");
+    //    if (!exp8_results.is_open()) {
+    //        std::cerr << "Error opening experiment8_macro_dt_self_conv.txt" << std::endl;
+    //        return 1;
+    //    }
+    //    exp8_results << std::scientific << std::setprecision(12);
+    //    std::cout << "\nRunning Experiment 8: Piecewise Magnus Self-Convergence vs macro_dt...\n";
+
+    //    double inner_dt = 1e-6;          // Фиксированный мелкий внутренний шаг
+    //    double current_macro_dt = 1e-1;  // Стартовый макро-шаг
+    //    double tolerance = 1e-9;         // Порог сходимости
+
+    //    CMatrix U_prev = utils::eye(N);  // Для хранения результата с предыдущим (более крупным) шагом
+    //    bool is_first_iteration = true;
+    //    double prev_error = 1e300;
+
+    //    exp8_results << "=================================================================\n";
+    //    exp8_results << "EXPERIMENT 8: Piecewise Magnus Self-Convergence vs macro_dt\n";
+    //    exp8_results << "Fixed inner integration step: " << inner_dt << "\n";
+    //    exp8_results << "Convergence tolerance: " << tolerance << "\n";
+    //    exp8_results << "-----------------------------------------------------------------\n";
+    //    exp8_results << "macro_dt | Diff with prev step | Steps | Time (ms)\n";
+    //    exp8_results << "-----------------------------------------------------------------\n";
+
+    //    // Будем измельчать макро-шаг, пока он не упрется во внутренний шаг
+    //    while (current_macro_dt >= inner_dt) {
+    //        int steps = (int)std::round(T / current_macro_dt);
+    //        CMatrix U_curr = utils::eye(N);
+
+    //        auto start = std::chrono::high_resolution_clock::now();
+
+    //        for (int step = 0; step < steps; ++step) {
+    //            double t_curr = step * current_macro_dt;
+    //            double t_next = t_curr + current_macro_dt;
+
+    //            // Генерируем сэмплы с фиксированным мелким шагом inner_dt
+    //            vector<CMatrix> step_samples = generate_samples(t_curr, t_next, inner_dt, N, H0_test, Hmod_test, eps0, W);
+
+    //            // Считаем локальную Омегу и берем экспоненту (Чебышев)
+    //            CMatrix Omega_local = magnus_ACC(step_samples, inner_dt, N, 4);
+    //            CMatrix U_local = matrix_ops::expm_cheb(Omega_local, N, 15);
+
+    //            // Обновляем общее решение: U(t+dt) = U_local * U(t)
+    //            CMatrix temp((size_t)N * N, complexd(0.0, 0.0));
+    //            matrix_ops::matmul(U_local, U_curr, temp, N);
+    //            U_curr = temp;
+    //        }
+
+    //        auto end = std::chrono::high_resolution_clock::now();
+    //        double time_ms = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
+
+    //        if (!is_first_iteration) {
+    //            // Сравниваем результат для текущего macro_dt с результатом для macro_dt * 2
+    //            double diff = matrix_ops::max_element_diff(U_curr, U_prev, N);
+
+    //            exp8_results << current_macro_dt << " | " << diff << " | " << steps << " | " << time_ms << "\n";
+    //            std::cout << "macro_dt: " << std::setw(12) << current_macro_dt << " | Diff: " << diff << "\n";
+
+    //            // Критерий успешной сходимости
+    //            if (diff < tolerance) {
+    //                std::cout << "-> Converged! Accuracy tolerance reached.\n";
+    //                break;
+    //            }
+
+    //            // Выход из цикла, если точность перестала улучшаться из-за машинной погрешности
+    //            if (diff > prev_error && diff < 1.0) {
+    //                std::cout << "-> Stopping: Accuracy plateau reached.\n";
+    //                break;
+    //            }
+    //            prev_error = diff;
+    //        }
+    //        else {
+    //            // Для первой итерации нам не с чем сравнивать
+    //            exp8_results << current_macro_dt << " | N/A | " << steps << " | " << time_ms << "\n";
+    //            std::cout << "macro_dt: " << std::setw(12) << current_macro_dt << " | Diff: N/A\n";
+    //            is_first_iteration = false;
+    //        }
+
+    //        // Запоминаем текущую матрицу для следующей итерации
+    //        U_prev = U_curr;
+    //        current_macro_dt /= 2.0; // Измельчаем внешний шаг
+    //    }
+    //    exp8_results.close();
+    //    std::cout << "Experiment 8 results written to experiment8_macro_dt_self_conv.txt\n";
+    //}
+
     // =====================================================================
-    // Generate constant Hamiltonian H_const (for experiment 1)
+    // ============= EXPERIMENT 9: Adaptive Inner Integration ==============
     // =====================================================================
-    CMatrix H_const = utils::generate_hermitian_matrix(N, diag_min);
-
-    // Reference Omega for dt: Omega_ref = -i * H * dt (Exact solution for constant H)
-    CMatrix Omega_ref_dt = matrix_ops::mat_scale(H_const, complexd(0.0, -dt));
-
-    // Parameters for methods
-    // We set H0 = H_const (to be multiplied by -i inside functions if needed)
-    // But wait: generate_samples multiplies by -i. 
-    // magnus_3_14 expects H0 and H_mod as raw matrices and handles -i internally or expects them pre-scaled?
-    // Looking at your MatrixOperations.cpp: magnus_3_14 computes commutators directly.
-    // Usually H in physics is Hermitian. The exponent is -i*Omega.
-    // Let's stick to the convention: Input matrices are Hermitian.
-
-    // For Experiment 1 (Constant H), we map to the H(t) = H0 + f(t)Hmod form:
-    CMatrix H0_input = H_const;                // The constant part
-    CMatrix H_mod_zero(N * N, complexd(0.0, 0.0)); // No modulation part
-    const double eps0 = 0.0;                   // Amplitude 0
-    const double W = 0.0;                      // Frequency 0
-
-    // For other methods that take samples A(t) = -i H(t):
-    // Since eps0=0, A(t) is constantly -i * H_const.
-    const double T_int = dt;
-    const double integration_dt = dt * 0.01;
-
-    // We pass H0_input. generate_samples multiplies it by -i * (1 + ...).
-    // Since eps0=0, samples will be correctly -i * H_const.
-    vector<CMatrix> A_samples = generate_samples(0.0, T_int, integration_dt, N,
-        H0_input, H_mod_zero, eps0, W);
-
-    // However, magnus_3_14 implementation in MatrixOperations.cpp (from previous prompts)
-    // assumes A(t) construction inside or takes H0/Hmod. 
-    // It constructs Omega directly. We need to ensure it scales by -i if it's not done inside.
-    // Checking MatrixOperations.cpp logic for magnus_3_14:
-    // It sums terms like "h * H0". If H0 is Hermitian, Omega is Hermitian.
-    // But the result of magnus is usually the exponent argument. 
-    // If U = exp(Omega), and U = exp(-iHt), then Omega must be -iHt.
-    // Let's pass pre-scaled H0 to magnus_3_14 to be safe, OR check if it multiplies by -i.
-    // Looking at snippet: term = H0; scale(h); add(term). It does NOT multiply by -i.
-    // So for magnus_3_14, we must pass the anti-hermitian version if we want the result to match Omega_ref_dt.
-
-    CMatrix H0_anti_herm = matrix_ops::mat_scale(H_const, complexd(0.0, -1.0)); // -i * H
-
-
-    // =====================================================================
-    // ================== EXPERIMENT 1: Omega Accuracy Comparison ====================
-    // =====================================================================
-    results_txt << "=================================================================\n";
-    results_txt << "EXPERIMENT 1: Comparison of Omega Matrix Calculation Accuracy (H = const)\n";
-    results_txt << "N=" << N << ", dt=" << dt << "\n";
-    results_txt << "Reference: Omega_ref = -i * H * dt\n";
-    results_txt << "-----------------------------------------------------------------\n";
-    results_txt << "Method | K | Max Element Diff | Max Eig Diff | Time (ms)\n";
-    results_txt << "-----------------------------------------------------------------\n";
-
-    // --- 1. Classic Magnus Expansion ---
-    int max_classic_order = 2;
-    for (int k = 1; k <= max_classic_order; ++k) {
-        auto start = chrono::high_resolution_clock::now();
-
-        // magnus_classic takes H0, H_mod and generates samples internally with -i factor
-        CMatrix Omega_calc = magnus_classic(0.0, T_int, integration_dt, N, H0_input, H_mod_zero, eps0, W, k);
-
-        auto end = chrono::high_resolution_clock::now();
-        auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-        double time_ms = duration.count() / 1000.0;
-
-        CMatrix diff(N * N, complexd(0.0, 0.0));
-        matrix_ops::mat_sub(Omega_calc, Omega_ref_dt, diff, N);
-
-        double max_el_diff = matrix_ops::max_element_diff(Omega_calc, Omega_ref_dt, N);
-        double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
-
-        results_txt << "Classic | " << k << " | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
-    }
-
-    // --- 2. Diploma Expansion (ACC) ---
-    int max_acc_order = 5;
-    for (int k = 1; k <= max_acc_order; ++k) {
-        auto start = chrono::high_resolution_clock::now();
-
-        CMatrix Omega_calc = magnus_ACC(A_samples, integration_dt, N, k);
-
-        auto end = chrono::high_resolution_clock::now();
-        auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-        double time_ms = duration.count() / 1000.0;
-
-        CMatrix diff(N * N, complexd(0.0, 0.0));
-        matrix_ops::mat_sub(Omega_calc, Omega_ref_dt, diff, N);
-
-        double max_el_diff = matrix_ops::max_element_diff(Omega_calc, Omega_ref_dt, N);
-        double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
-
-        results_txt << "ACC | " << k << " | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
-    }
-
-    // --- 3. Recursive Expansion ---
-    int max_recursive_order = 15;
-    for (int k = 1; k <= max_recursive_order; ++k) {
-        auto start = chrono::high_resolution_clock::now();
-
-        CMatrix Omega_calc = magnus_expansion(0.0, T_int, integration_dt, N, H0_input, H_mod_zero, eps0, W, k);
-
-        auto end = chrono::high_resolution_clock::now();
-        auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-        double time_ms = duration.count() / 1000.0;
-
-        CMatrix diff(N * N, complexd(0.0, 0.0));
-        matrix_ops::mat_sub(Omega_calc, Omega_ref_dt, diff, N);
-
-        double max_el_diff = matrix_ops::max_element_diff(Omega_calc, Omega_ref_dt, N);
-        double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
-
-        results_txt << "Recursive | " << k << " | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
-    }
-
-    // --- 4. Formula 3.14 (Special 4th order) ---
-    //  - Formula 3.14 from dissertation
     {
-        auto start = chrono::high_resolution_clock::now();
-
-        // magnus_3_14 sums H0 terms directly. To get Omega = -i*H*dt, 
-        // we must pass H0_anti_herm (-i*H) because the function doesn't add -i itself.
-        // H_mod is zero, so commutators are zero.
-        CMatrix Omega_314 = magnus_3_14(0.0, T_int, integration_dt, N, H0_anti_herm, H_mod_zero, eps0, W);
-
-        auto end = chrono::high_resolution_clock::now();
-        auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-        double time_ms = duration.count() / 1000.0;
-
-        CMatrix diff(N * N, complexd(0.0, 0.0));
-        matrix_ops::mat_sub(Omega_314, Omega_ref_dt, diff, N);
-
-        double max_el_diff = matrix_ops::max_element_diff(Omega_314, Omega_ref_dt, N);
-        double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
-
-        // K=4 is the theoretical order of this method
-        results_txt << "Formula 3.14 | 4 | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
-    }
-    // =====================================================================
-    // ============= EXPERIMENT 2: Matrix Exponentiation Methods ============
-    // =====================================================================
-    {
-        std::ofstream exp2_results("experiment2_results.txt");
-        if (!exp2_results.is_open()) {
-            std::cerr << "Error opening experiment2_results.txt" << std::endl;
+        std::ofstream exp9_results("experiment9_adaptive_inner.txt");
+        if (!exp9_results.is_open()) {
+            std::cerr << "Error opening experiment9_adaptive_inner.txt\n";
             return 1;
         }
-        exp2_results << std::scientific << std::setprecision(12);
-        std::cout << "\nRunning Experiment 2: Matrix Exponentiation Comparison...\n";
+        exp9_results << std::scientific << std::setprecision(12);
+        std::cout << "\nRunning Experiment 9: Adaptive Inner Integration (Segment Refinement)...\n";
 
-        exp2_results << "=================================================================\n";
-        exp2_results << "EXPERIMENT 2: Matrix Exponentiation Methods Comparison\n";
-        exp2_results << "N=" << N << "\n";
-        exp2_results << "Test matrix: H_test_matrix.txt\n";
-        exp2_results << "Reference: Eigen Pade approximation\n";
-        exp2_results << "-----------------------------------------------------------------\n";
-        exp2_results << "Method | Param | Max Element Diff | Max Eig Diff | Time (ms)\n";
-        exp2_results << "-----------------------------------------------------------------\n";
+        // Настройки адаптивности
+        double tolerance = 1e-12;
+        int num_segments = 20;   // Фиксируем количество макро-шагов
+        double macro_dt = T / num_segments;
 
-        // Create test Omega = -i * H_test (anti-Hermitian matrix)
-        CMatrix Omega_test = matrix_ops::mat_scale(H_test, complexd(0.0, -1.0));
+        CMatrix U_total = utils::eye(N);
 
-        // Reference: Eigen Pade approximation
-        auto start_ref = chrono::high_resolution_clock::now();
-        CMatrix U_ref = matrix_ops::expm_pade_eigen(Omega_test, N);
-        auto end_ref = chrono::high_resolution_clock::now();
-        auto duration_ref = chrono::duration_cast<chrono::microseconds>(end_ref - start_ref);
-        double time_ref_ms = duration_ref.count() / 1000.0;
+        exp9_results << "=================================================================\n";
+        exp9_results << "EXPERIMENT 9: Adaptive Inner Integration\n";
+        exp9_results << "Total time T = " << T << ", Segments = " << num_segments << ", macro_dt = " << macro_dt << "\n";
+        exp9_results << "Convergence tolerance = " << tolerance << "\n";
+        exp9_results << "-----------------------------------------------------------------\n";
+        exp9_results << "Segment | t_start | t_end | Converged inner_dt | Halvings | Time (ms)\n";
+        exp9_results << "-----------------------------------------------------------------\n";
 
-        std::cout << "Reference (Eigen Pade) computed in " << time_ref_ms << " ms\n";
+        auto start_total = std::chrono::high_resolution_clock::now();
 
-        // Taylor method comparison (terms = 1..30)
-        for (int k = 1; k <= 30; ++k) {
-            auto start = chrono::high_resolution_clock::now();
+        for (int i = 0; i < num_segments; ++i) {
+            double t_start = i * macro_dt;
+            double t_end = t_start + macro_dt;
 
-            CMatrix U_taylor = matrix_ops::expm_taylor(Omega_test, N, k);
+            double current_inner_dt = macro_dt; // Начинаем с шага, равного всему отрезку
+            CMatrix U_local_old = utils::eye(N);
+            CMatrix U_local_new = utils::eye(N);
 
-            auto end = chrono::high_resolution_clock::now();
-            auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-            double time_ms = duration.count() / 1000.0;
+            bool converged = false;
+            int halving_count = 0;
 
-            CMatrix diff(N * N, complexd(0.0, 0.0));
-            matrix_ops::mat_sub(U_taylor, U_ref, diff, N);
+            auto start_seg = std::chrono::high_resolution_clock::now();
 
-            double max_el_diff = matrix_ops::max_element_diff(U_taylor, U_ref, N);
-            double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
+            std::cout << "Segment " << i + 1 << "/" << num_segments << " [" << t_start << ", " << t_end << "]:\n";
 
-            exp2_results << "Taylor | " << k << " | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
-        }
+            while (!converged && halving_count < 25) { // Ограничитель, чтобы избежать бесконечного цикла
+                vector<CMatrix> samples = generate_samples(t_start, t_end, current_inner_dt, N, H0_test, Hmod_test, eps0, W);
+                CMatrix Omega = magnus_ACC(samples, current_inner_dt, N, 4);
 
-        // Chebyshev method comparison (M = 1..25)
-        for (int M = 1; M <= 25; ++M) {
-            auto start = chrono::high_resolution_clock::now();
+                // Берем экспоненту (Чебышев)
+                U_local_new = matrix_ops::expm_cheb(Omega, N, 15);
 
-            CMatrix U_cheb = matrix_ops::expm_cheb(Omega_test, N, M);
+                // Проверяем сходимость
+                if (halving_count > 0) {
+                    // Сравниваем текущую U_local с той, что была рассчитана на предыдущем, более крупном шаге
+                    double diff = matrix_ops::max_element_diff(U_local_new, U_local_old, N);
 
-            auto end = chrono::high_resolution_clock::now();
-            auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-            double time_ms = duration.count() / 1000.0;
-
-            CMatrix diff(N * N, complexd(0.0, 0.0));
-            matrix_ops::mat_sub(U_cheb, U_ref, diff, N);
-
-            double max_el_diff = matrix_ops::max_element_diff(U_cheb, U_ref, N);
-            double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
-
-            exp2_results << "Chebyshev | " << M << " | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
-        }
-
-        exp2_results << "-----------------------------------------------------------------\n";
-        exp2_results.close();
-        std::cout << "Experiment 2 results written to experiment2_results.txt\n";
-    }
-
-    // =====================================================================
-    // ============= EXPERIMENT 3: ODE Solving U'(t) = -iH*U(t) =============
-    // =====================================================================
-
-    {
-        std::ofstream exp3_results("experiment3_results.txt");
-        if (!exp3_results.is_open()) {
-            std::cerr << "Error opening experiment3_results.txt" << std::endl;
-            return 1;
-        }
-        exp3_results << std::scientific << std::setprecision(12);
-        std::cout << "\nRunning Experiment 3: ODE Solving Comparison...\n";
-
-        exp3_results << "=================================================================\n";
-        exp3_results << "EXPERIMENT 3: ODE Solution U'(t) = -iH*U(t) Comparison\n";
-        exp3_results << "N=" << N << ", T=" << T << "\n";
-        exp3_results << "Test matrix: H_test_matrix.txt\n";
-        exp3_results << "Reference: Exact solution U(T) = exp(-i*H*T) with Eigen Pade\n";
-        exp3_results << "-----------------------------------------------------------------\n";
-        exp3_results << "Method | Max Element Diff | Max Eig Diff | Time (ms)\n";
-        exp3_results << "-----------------------------------------------------------------\n";
-
-        // Exact solution U(T) = exp(-i * H_test * T) - reference
-        CMatrix Omega_exact = matrix_ops::mat_scale(H_test, complexd(0.0, -T));
-        auto start_exact = chrono::high_resolution_clock::now();
-        CMatrix U_exact = matrix_ops::expm_pade_eigen(Omega_exact, N);
-        auto end_exact = chrono::high_resolution_clock::now();
-        auto duration_exact = chrono::duration_cast<chrono::microseconds>(end_exact - start_exact);
-        double time_exact_ms = duration_exact.count() / 1000.0;
-
-        std::cout << "Exact solution computed in " << time_exact_ms << " ms\n";
-
-        // Method 1: Runge-Kutta with dt = 1e-5
-        {
-            double rk_dt = 1e-5;
-            int num_steps = (int)std::round(T / rk_dt);
-            if (num_steps == 0) num_steps = 1;
-
-            std::cout << "Runge-Kutta will perform " << num_steps << " steps with dt=" << rk_dt << std::endl;
-
-            auto start_rk = chrono::high_resolution_clock::now();
-
-            CMatrix U_rk = utils::eye(N);
-            for (int step = 0; step < num_steps; ++step) {
-                U_rk = runge_kutta_simple::runge_kutta_step(H_test, U_rk, rk_dt, N);
-            }
-
-            auto end_rk = chrono::high_resolution_clock::now();
-            auto duration_rk = chrono::duration_cast<chrono::microseconds>(end_rk - start_rk);
-            double time_rk_ms = duration_rk.count() / 1000.0;
-
-            // Compare with exact solution
-            CMatrix diff_rk(N * N, complexd(0.0, 0.0));
-            matrix_ops::mat_sub(U_rk, U_exact, diff_rk, N);
-
-            double max_el_diff_rk = matrix_ops::max_element_diff(U_rk, U_exact, N);
-            double max_eig_diff_rk = matrix_ops::max_eigenvalue_modulus_hermitian(diff_rk, N);
-
-            exp3_results << "Runge-Kutta dt=1e-5 | " << max_el_diff_rk << " | " << max_eig_diff_rk << " | " << time_rk_ms << "\n";
-            std::cout << "Runge-Kutta (dt=1e-5) computed in " << time_rk_ms << " ms\n";
-        }
-
-        // Method 2: Magnus ACC + Chebyshev exponentiation
-        {
-            // For constant H, we don't need many samples - just a few points for integration
-            // Omega = integral_0^T (-i * H) dt = -i * H * T
-            double integration_dt = 0.01;
-            vector<CMatrix> A_samples = generate_samples(0.0, T, integration_dt, N,
-                H_test, CMatrix(N*N, complexd(0.0, 0.0)), 0.0, 0.0); // eps0=0, W=0 for constant H
-
-            std::cout << "Generated " << A_samples.size() << " samples for Magnus integration" << std::endl;
-
-            auto start_magnus = chrono::high_resolution_clock::now();
-
-            // Compute Omega using Magnus ACC (order 2 is sufficient for constant H)
-            CMatrix Omega_magnus = magnus_ACC(A_samples, integration_dt, N, 2);
-
-            // Exponentiate using Chebyshev method (M=15 terms is enough)
-            CMatrix U_magnus = matrix_ops::expm_cheb(Omega_magnus, N, 15);
-
-            auto end_magnus = chrono::high_resolution_clock::now();
-            auto duration_magnus = chrono::duration_cast<chrono::microseconds>(end_magnus - start_magnus);
-            double time_magnus_ms = duration_magnus.count() / 1000.0;
-
-            // Compare with exact solution
-            CMatrix diff_magnus(N * N, complexd(0.0, 0.0));
-            matrix_ops::mat_sub(U_magnus, U_exact, diff_magnus, N);
-
-            double max_el_diff_magnus = matrix_ops::max_element_diff(U_magnus, U_exact, N);
-            double max_eig_diff_magnus = matrix_ops::max_eigenvalue_modulus_hermitian(diff_magnus, N);
-
-            exp3_results << "Magnus ACC + Chebyshev | " << max_el_diff_magnus << " | " << max_eig_diff_magnus << " | " << time_magnus_ms << "\n";
-            std::cout << "Magnus ACC + Chebyshev computed in " << time_magnus_ms << " ms\n";
-        }
-
-        exp3_results << "-----------------------------------------------------------------\n";
-        exp3_results << "Note: Reference solution uses exp(-i*H*T) with Eigen Pade approximation\n";
-        exp3_results.close();
-        std::cout << "Experiment 3 results written to experiment3_results.txt\n";
-    }
-    
-
-    // =====================================================================
-    // ============= EXPERIMENT 4: Omega Stability Analysis ===============
-    // =====================================================================
-    {
-        std::ofstream exp4_results("experiment4_results.txt");
-        if (!exp4_results.is_open()) {
-            std::cerr << "Error opening experiment4_results.txt" << std::endl;
-            return 1;
-        }
-        exp4_results << std::scientific << std::setprecision(12);
-        std::cout << "\nRunning Experiment 4: Omega Stability Analysis...\n";
-
-        exp4_results << "=================================================================\n";
-        exp4_results << "EXPERIMENT 4: Omega Stability Analysis for Spectral Matrices\n";
-        exp4_results << "N=" << N << ", dt=" << dt << "\n";
-        exp4_results << "Test matrices: spectral matrices with condition numbers 10, 100, 1000, 10000\n";
-        exp4_results << "Reference: Omega = H * dt (exact for constant H)\n";
-        exp4_results << "-----------------------------------------------------------------\n";
-        exp4_results << "Kappa | Method | Max Element Diff | Max Eig Diff | Time (ms)\n";
-        exp4_results << "-----------------------------------------------------------------\n";
-
-        std::vector<std::string> methods = {"Classic", "ACC", "Recursive", "Formula 3.14"};
-        std::vector<double> condition_numbers = {10.0, 100.0, 1000.0, 10000.0};
-
-        for (size_t mat_idx = 0; mat_idx < spectral_matrices.size(); ++mat_idx) {
-            double kappa = condition_numbers[mat_idx];
-            const CMatrix& H = spectral_matrices[mat_idx];
-
-            std::cout << "Testing matrix with condition number " << kappa << "\n";
-
-            // Reference Omega = H * dt
-            CMatrix Omega_ref = matrix_ops::mat_scale(H, complexd(dt, 0.0));
-
-            // Test each Magnus method
-            CMatrix H0_input = H;
-            CMatrix H_mod_zero(N * N, complexd(0.0, 0.0));
-            const double eps0 = 0.0;
-            const double W = 0.0;
-            const double T_int = dt;
-            const double integration_dt = dt * 0.01;
-
-            // Classic Magnus (k=2)
-            {
-                auto start = chrono::high_resolution_clock::now();
-                CMatrix Omega_calc = magnus_classic(0.0, T_int, integration_dt, N, H0_input, H_mod_zero, eps0, W, 2);
-                auto end = chrono::high_resolution_clock::now();
-                auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-                double time_ms = duration.count() / 1000.0;
-
-                CMatrix diff(N * N, complexd(0.0, 0.0));
-                matrix_ops::mat_sub(Omega_calc, Omega_ref, diff, N);
-
-                double max_el_diff = matrix_ops::max_element_diff(Omega_calc, Omega_ref, N);
-                double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
-
-                exp4_results << kappa << " | Classic | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
-            }
-
-            // ACC Magnus (k=5)
-            {
-                vector<CMatrix> A_samples = generate_samples(0.0, T_int, integration_dt, N, H0_input, H_mod_zero, eps0, W);
-
-                auto start = chrono::high_resolution_clock::now();
-                CMatrix Omega_calc = magnus_ACC(A_samples, integration_dt, N, 5);
-                auto end = chrono::high_resolution_clock::now();
-                auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-                double time_ms = duration.count() / 1000.0;
-
-                CMatrix diff(N * N, complexd(0.0, 0.0));
-                matrix_ops::mat_sub(Omega_calc, Omega_ref, diff, N);
-
-                double max_el_diff = matrix_ops::max_element_diff(Omega_calc, Omega_ref, N);
-                double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
-
-                exp4_results << kappa << " | ACC | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
-            }
-
-            // Recursive Magnus (k=10)
-            {
-                auto start = chrono::high_resolution_clock::now();
-                CMatrix Omega_calc = magnus_expansion(0.0, T_int, integration_dt, N, H0_input, H_mod_zero, eps0, W, 10);
-                auto end = chrono::high_resolution_clock::now();
-                auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-                double time_ms = duration.count() / 1000.0;
-
-                CMatrix diff(N * N, complexd(0.0, 0.0));
-                matrix_ops::mat_sub(Omega_calc, Omega_ref, diff, N);
-
-                double max_el_diff = matrix_ops::max_element_diff(Omega_calc, Omega_ref, N);
-                double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
-
-                exp4_results << kappa << " | Recursive | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
-            }
-
-            // Formula 3.14
-            {
-                CMatrix H0_anti_herm = matrix_ops::mat_scale(H, complexd(0.0, -1.0)); // -i * H
-
-                auto start = chrono::high_resolution_clock::now();
-                CMatrix Omega_calc = magnus_3_14(0.0, T_int, integration_dt, N, H0_anti_herm, H_mod_zero, eps0, W);
-                auto end = chrono::high_resolution_clock::now();
-                auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-                double time_ms = duration.count() / 1000.0;
-
-                CMatrix diff(N * N, complexd(0.0, 0.0));
-                matrix_ops::mat_sub(Omega_calc, Omega_ref, diff, N);
-
-                double max_el_diff = matrix_ops::max_element_diff(Omega_calc, Omega_ref, N);
-                double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
-
-                exp4_results << kappa << " | Formula 3.14 | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
-            }
-        }
-
-        exp4_results << "-----------------------------------------------------------------\n";
-        exp4_results.close();
-        std::cout << "Experiment 4 results written to experiment4_results.txt\n";
-    }
-
-    // =====================================================================
-    // ============= EXPERIMENT 5: Matrix Exponent Stability ==============
-    // =====================================================================
-    {
-        std::ofstream exp5_results("experiment5_results.txt");
-        if (!exp5_results.is_open()) {
-            std::cerr << "Error opening experiment5_results.txt" << std::endl;
-            return 1;
-        }
-        exp5_results << std::scientific << std::setprecision(12);
-        std::cout << "\nRunning Experiment 5: Matrix Exponent Stability Analysis...\n";
-
-        exp5_results << "=================================================================\n";
-        exp5_results << "EXPERIMENT 5: Matrix Exponent Stability Analysis for Spectral Matrices\n";
-        exp5_results << "N=" << N << "\n";
-        exp5_results << "Test matrices: spectral matrices with condition numbers 10, 100, 1000, 10000\n";
-        exp5_results << "Reference: exp(-i*H) = V*exp(-i*D)*V^(-1)\n";
-        exp5_results << "-----------------------------------------------------------------\n";
-        exp5_results << "Kappa | Method | Max Element Diff | Max Eig Diff | Time (ms)\n";
-        exp5_results << "-----------------------------------------------------------------\n";
-
-        std::vector<double> condition_numbers = {10.0, 100.0, 1000.0, 10000.0};
-
-        for (size_t mat_idx = 0; mat_idx < spectral_matrices.size(); ++mat_idx) {
-            double kappa = condition_numbers[mat_idx];
-            const CMatrix& H = spectral_matrices[mat_idx];
-            const CMatrix& V = spectral_V_matrices[mat_idx];
-            const CMatrix& D = spectral_D_matrices[mat_idx];
-
-            std::cout << "Testing matrix exponent with condition number " << kappa << "\n";
-
-            // Reference: exp(-i*H) = V * exp(-i*D) * V^(-1)
-            // Since D is diagonal, exp(-i*D) is diagonal with exp(-i*D_ii)
-            CMatrix exp_minus_i_D(N * N, complexd(0.0, 0.0));
-            for (int i = 0; i < N; ++i) {
-                double lambda = D[idx(i, i, N)].real();
-                complexd exp_val = exp(complexd(0.0, -lambda));
-                exp_minus_i_D[idx(i, i, N)] = exp_val;
-            }
-
-            CMatrix Vh = matrix_ops::dagger(V, N);
-            CMatrix V_exp_D(N * N, complexd(0.0, 0.0));
-            matrix_ops::matmul(V, exp_minus_i_D, V_exp_D, N);
-            CMatrix U_ref(N * N, complexd(0.0, 0.0));
-            matrix_ops::matmul(V_exp_D, Vh, U_ref, N);
-
-            // Test different exponentiation methods
-            CMatrix Omega_test = matrix_ops::mat_scale(H, complexd(0.0, -1.0)); // -i * H
-
-            // Taylor method (terms = 30)
-            {
-                auto start = chrono::high_resolution_clock::now();
-                CMatrix U_calc = matrix_ops::expm_taylor(Omega_test, N, 30);
-                auto end = chrono::high_resolution_clock::now();
-                auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-                double time_ms = duration.count() / 1000.0;
-
-                CMatrix diff(N * N, complexd(0.0, 0.0));
-                matrix_ops::mat_sub(U_calc, U_ref, diff, N);
-
-                double max_el_diff = matrix_ops::max_element_diff(U_calc, U_ref, N);
-                double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
-
-                exp5_results << kappa << " | Taylor | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
-            }
-
-            // Chebyshev method (M = 25)
-            {
-                auto start = chrono::high_resolution_clock::now();
-                CMatrix U_calc = matrix_ops::expm_cheb(Omega_test, N, 25);
-                auto end = chrono::high_resolution_clock::now();
-                auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-                double time_ms = duration.count() / 1000.0;
-
-                CMatrix diff(N * N, complexd(0.0, 0.0));
-                matrix_ops::mat_sub(U_calc, U_ref, diff, N);
-
-                double max_el_diff = matrix_ops::max_element_diff(U_calc, U_ref, N);
-                double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
-
-                exp5_results << kappa << " | Chebyshev | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
-            }
-
-            // Eigen Pade (reference method)
-            {
-                auto start = chrono::high_resolution_clock::now();
-                CMatrix U_calc = matrix_ops::expm_pade_eigen(Omega_test, N);
-                auto end = chrono::high_resolution_clock::now();
-                auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-                double time_ms = duration.count() / 1000.0;
-
-                CMatrix diff(N * N, complexd(0.0, 0.0));
-                matrix_ops::mat_sub(U_calc, U_ref, diff, N);
-
-                double max_el_diff = matrix_ops::max_element_diff(U_calc, U_ref, N);
-                double max_eig_diff = matrix_ops::max_eigenvalue_modulus_hermitian(diff, N);
-
-                exp5_results << kappa << " | Eigen Pade | " << max_el_diff << " | " << max_eig_diff << " | " << time_ms << "\n";
-            }
-        }
-
-        exp5_results << "-----------------------------------------------------------------\n";
-        exp5_results.close();
-        std::cout << "Experiment 5 results written to experiment5_results.txt\n";
-    }
-
-    // =====================================================================
-    // ============= EXPERIMENT 6: ODE Stability Analysis ================
-    // =====================================================================
-    {
-        std::ofstream exp6_results("experiment6_results.txt");
-        if (!exp6_results.is_open()) {
-            std::cerr << "Error opening experiment6_results.txt" << std::endl;
-            return 1;
-        }
-        exp6_results << std::scientific << std::setprecision(12);
-        std::cout << "\nRunning Experiment 6: ODE Stability Analysis...\n";
-
-        exp6_results << "=================================================================\n";
-        exp6_results << "EXPERIMENT 6: ODE Solution Stability Analysis for Spectral Matrices\n";
-        exp6_results << "N=" << N << ", T=" << T << "\n";
-        exp6_results << "Test matrices: spectral matrices with condition numbers 10, 100, 1000, 10000\n";
-        exp6_results << "Reference: Exact solution U(T) = exp(-i*H*T) with Eigen Pade\n";
-        exp6_results << "-----------------------------------------------------------------\n";
-        exp6_results << "Kappa | Method | Max Element Diff | Max Eig Diff | Time (ms)\n";
-        exp6_results << "-----------------------------------------------------------------\n";
-
-        std::vector<double> condition_numbers = {10.0, 100.0, 1000.0, 10000.0};
-
-        for (size_t mat_idx = 0; mat_idx < spectral_matrices.size(); ++mat_idx) {
-            double kappa = condition_numbers[mat_idx];
-            const CMatrix& H = spectral_matrices[mat_idx];
-
-            std::cout << "Testing ODE stability for matrix with condition number " << kappa << "\n";
-
-            // Reference solution U(T) = exp(-i * H * T)
-            CMatrix Omega_exact = matrix_ops::mat_scale(H, complexd(0.0, -T));
-            CMatrix U_exact = matrix_ops::expm_pade_eigen(Omega_exact, N);
-
-            // Method 1: Runge-Kutta with dt = 1e-5
-            {
-                double rk_dt = 1e-5;
-                int num_steps = (int)std::round(T / rk_dt);
-                if (num_steps == 0) num_steps = 1;
-
-                auto start_rk = chrono::high_resolution_clock::now();
-
-                CMatrix U_rk = utils::eye(N);
-                for (int step = 0; step < num_steps; ++step) {
-                    U_rk = runge_kutta_simple::runge_kutta_step(H, U_rk, rk_dt, N);
+                    if (diff < tolerance) {
+                        converged = true;
+                        std::cout << "  -> Converged at inner_dt: " << std::setw(12) << current_inner_dt
+                            << " (diff: " << diff << ")\n";
+                    }
                 }
 
-                auto end_rk = chrono::high_resolution_clock::now();
-                auto duration_rk = chrono::duration_cast<chrono::microseconds>(end_rk - start_rk);
-                double time_rk_ms = duration_rk.count() / 1000.0;
+                // Запоминаем текущий результат для следующей итерации
+                U_local_old = U_local_new;
 
-                // Compare with exact solution
-                CMatrix diff_rk(N * N, complexd(0.0, 0.0));
-                matrix_ops::mat_sub(U_rk, U_exact, diff_rk, N);
-
-                double max_el_diff_rk = matrix_ops::max_element_diff(U_rk, U_exact, N);
-                double max_eig_diff_rk = matrix_ops::max_eigenvalue_modulus_hermitian(diff_rk, N);
-
-                exp6_results << kappa << " | Runge-Kutta dt=1e-5 | " << max_el_diff_rk << " | " << max_eig_diff_rk << " | " << time_rk_ms << "\n";
+                if (!converged) {
+                    current_inner_dt /= 2.0; // Измельчаем шаг
+                    halving_count++;
+                }
             }
 
-            // Method 2: Magnus ACC + Chebyshev exponentiation
-            {
-                // Use reasonable integration step for Magnus
-                double integration_dt = 0.01;
-                vector<CMatrix> A_samples = generate_samples(0.0, T, integration_dt, N,
-                    H, CMatrix(N*N, complexd(0.0, 0.0)), 0.0, 0.0); // eps0=0, W=0 for constant H
+            auto end_seg = std::chrono::high_resolution_clock::now();
+            double time_ms_seg = std::chrono::duration_cast<std::chrono::microseconds>(end_seg - start_seg).count() / 1000.0;
 
-                auto start_magnus = chrono::high_resolution_clock::now();
+            // Записываем статистику по сегменту
+            exp9_results << i + 1 << " | " << t_start << " | " << t_end << " | "
+                << current_inner_dt << " | " << halving_count << " | " << time_ms_seg << "\n";
 
-                // Compute Omega using Magnus ACC (order 2 is sufficient)
-                CMatrix Omega_magnus = magnus_ACC(A_samples, integration_dt, N, 2);
-
-                // Exponentiate using Chebyshev method (M=15 terms)
-                CMatrix U_magnus = matrix_ops::expm_cheb(Omega_magnus, N, 15);
-
-                auto end_magnus = chrono::high_resolution_clock::now();
-                auto duration_magnus = chrono::duration_cast<chrono::microseconds>(end_magnus - start_magnus);
-                double time_magnus_ms = duration_magnus.count() / 1000.0;
-
-                // Compare with exact solution
-                CMatrix diff_magnus(N * N, complexd(0.0, 0.0));
-                matrix_ops::mat_sub(U_magnus, U_exact, diff_magnus, N);
-
-                double max_el_diff_magnus = matrix_ops::max_element_diff(U_magnus, U_exact, N);
-                double max_eig_diff_magnus = matrix_ops::max_eigenvalue_modulus_hermitian(diff_magnus, N);
-
-                exp6_results << kappa << " | Magnus ACC + Chebyshev | " << max_el_diff_magnus << " | " << max_eig_diff_magnus << " | " << time_magnus_ms << "\n";
-            }
+            // Обновляем общее решение: U(t+dt) = U_local * U(t)
+            CMatrix temp((size_t)N * N, complexd(0.0, 0.0));
+            matrix_ops::matmul(U_local_new, U_total, temp, N);
+            U_total = temp;
         }
 
-        exp6_results << "-----------------------------------------------------------------\n";
-        exp6_results << "Note: Testing ODE solution stability for poorly conditioned matrices\n";
-        exp6_results.close();
-        std::cout << "Experiment 6 results written to experiment6_results.txt\n";
+        auto end_total = std::chrono::high_resolution_clock::now();
+        double time_ms_total = std::chrono::duration_cast<std::chrono::microseconds>(end_total - start_total).count() / 1000.0;
+
+        exp9_results << "-----------------------------------------------------------------\n";
+        exp9_results << "Total time for adaptive Magnus: " << time_ms_total << " ms\n";
+        exp9_results.close();
+
+        std::cout << "Experiment 9 finished. Total time: " << time_ms_total << " ms\n";
+        std::cout << "Results written to experiment9_adaptive_inner.txt\n";
     }
 
     results_txt.close();
-    std::cout << "\nExperiment results written to magnus_experiment_results.txt" << std::endl;
-
+    std::cout << "\nExperiment results written." << std::endl;
     return 0;
 }

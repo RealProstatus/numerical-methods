@@ -24,4 +24,8 @@ CMatrix magnus_classic(
     double eps0, double W,
     int max_order);
 
-
+//// ------ Trapezoidal integration for matrix functions ------
+//vector<CMatrix> generate_samples(double t0, double t1, double dt, 
+//    int N,
+//    const CMatrix& H0, const CMatrix& H_mod,
+//    double eps0, double W);

@@ -5,6 +5,7 @@
 #include "AccMagnus.h"
 #include "RecursiveMagnus.h"
 #include "Formula314Magnus.h"
+#include "PiecewiseMagnus.h"
 
 // Exponentiation methods (exp(Omega))
 #include "TaylorExpm.h"
