@@ -1,5 +1,6 @@
 ﻿#include "Utils.h"
 #include "MatrixOperations.h"
+#include <filesystem>
 #include <iomanip>
 #include <tuple>
 #include <random>
@@ -47,8 +48,23 @@ namespace utils
         return I;
     }
 
+    string results_path(const string& filename) {
+        namespace fs = std::filesystem;
+
+        fs::path path(filename);
+        if (!path.is_absolute() && !path.has_parent_path()) {
+            path = fs::path("results") / path;
+        }
+
+        if (path.has_parent_path()) {
+            fs::create_directories(path.parent_path());
+        }
+
+        return path.string();
+    }
+
     void save_matrix(const CMatrix& mat, int N, const string& filename) {
-    ofstream file(filename);
+    ofstream file(results_path(filename));
     file << "Matrix " << N << "x" << N << ":\n";
     file << "========================================\n";
 

@@ -45,7 +45,7 @@ int main() {
         spectral_D_matrices.push_back(D);
     }
 
-    std::ofstream results_txt("magnus_experiment_results.txt");
+    std::ofstream results_txt(utils::results_path("magnus_experiment_results.txt"));
     results_txt << std::scientific << std::setprecision(12);
     std::cout << std::scientific << std::setprecision(12);
 
@@ -126,7 +126,7 @@ int main() {
     //// EXPERIMENT 2: Matrix Exponentiation Methods for Dynamic Omega
     //// =====================================================================
     //{
-    //    std::ofstream exp2_results("experiment2_results.txt");
+    //    std::ofstream exp2_results(utils::results_path("experiment2_results.txt"));
     //    exp2_results << std::scientific << std::setprecision(12);
     //    std::cout << "\nRunning Experiment 2: Matrix Exponentiation Comparison...\n";
 
@@ -186,7 +186,7 @@ int main() {
     //// EXPERIMENT 3: ODE Solving U'(t) = -iH(t)*U(t)
     //// =====================================================================
     //{
-    //    std::ofstream exp3_results("experiment3_results.txt");
+    //    std::ofstream exp3_results(utils::results_path("experiment3_results.txt"));
     //    exp3_results << std::scientific << std::setprecision(12);
     //    std::cout << "\nRunning Experiment 3: ODE Solving Comparison (H(t) dependent)...\n";
 
@@ -247,7 +247,7 @@ int main() {
     //// ============= EXPERIMENT 4: Omega Stability Analysis ===============
     //// =====================================================================
     //{
-    //    std::ofstream exp4_results("experiment4_results.txt");
+    //    std::ofstream exp4_results(utils::results_path("experiment4_results.txt"));
     //    if (!exp4_results.is_open()) {
     //        std::cerr << "Error opening experiment4_results.txt" << std::endl;
     //        return 1;
@@ -338,7 +338,7 @@ int main() {
     //// ============= EXPERIMENT 5: Matrix Exponent Stability ==============
     //// =====================================================================
     //{
-    //    std::ofstream exp5_results("experiment5_results.txt");
+    //    std::ofstream exp5_results(utils::results_path("experiment5_results.txt"));
     //    if (!exp5_results.is_open()) {
     //        std::cerr << "Error opening experiment5_results.txt" << std::endl;
     //        return 1;
@@ -402,7 +402,7 @@ int main() {
     //// ============= EXPERIMENT 6: ODE Stability Analysis ================
     //// =====================================================================
     //{
-    //    std::ofstream exp6_results("experiment6_results.txt");
+    //    std::ofstream exp6_results(utils::results_path("experiment6_results.txt"));
     //    if (!exp6_results.is_open()) {
     //        std::cerr << "Error opening experiment6_results.txt" << std::endl;
     //        return 1;
@@ -485,7 +485,7 @@ int main() {
     //// ============= EXPERIMENT 7: RK4 Accuracy vs dt ======================
     //// =====================================================================
     //{
-    //    std::ofstream exp7_results("experiment7_rk4_convergence.txt");
+    //    std::ofstream exp7_results(utils::results_path("experiment7_rk4_convergence.txt"));
     //    if (!exp7_results.is_open()) {
     //        std::cerr << "Error opening experiment7_rk4_convergence.txt" << std::endl;
     //        return 1;
@@ -553,7 +553,7 @@ int main() {
     //// ============= EXPERIMENT 8: Magnus macro_dt Self-Convergence ========
     //// =====================================================================
     //{
-    //    std::ofstream exp8_results("experiment8_macro_dt_self_conv.txt");
+    //    std::ofstream exp8_results(utils::results_path("experiment8_macro_dt_self_conv.txt"));
     //    if (!exp8_results.is_open()) {
     //        std::cerr << "Error opening experiment8_macro_dt_self_conv.txt" << std::endl;
     //        return 1;
@@ -643,9 +643,10 @@ int main() {
     // ============= EXPERIMENT 9: Adaptive Inner Integration ==============
     // =====================================================================
     {
-        std::ofstream exp9_results("experiment9_adaptive_inner.txt");
+        const string exp9_results_path = utils::results_path("experiment9_adaptive_inner.txt");
+        std::ofstream exp9_results(exp9_results_path);
         if (!exp9_results.is_open()) {
-            std::cerr << "Error opening experiment9_adaptive_inner.txt\n";
+            std::cerr << "Error opening " << exp9_results_path << "\n";
             return 1;
         }
         exp9_results << std::scientific << std::setprecision(12);
@@ -732,7 +733,7 @@ int main() {
         exp9_results.close();
 
         std::cout << "Experiment 9 finished. Total time: " << time_ms_total << " ms\n";
-        std::cout << "Results written to experiment9_adaptive_inner.txt\n";
+        std::cout << "Results written to " << exp9_results_path << "\n";
     }
 
     results_txt.close();
