@@ -34,9 +34,14 @@ namespace matrix_ops {
         for (size_t k = 0; k < n; ++k) C[k] = A[k] - B[k];
     }
 
+    void mat_axpy(const CMatrix& X, CMatrix& Y, int N, complexd alpha) {
+        const MKL_INT n = static_cast<MKL_INT>((size_t)N * N);
+        cblas_zaxpy(n, &alpha, X.data(), 1, Y.data(), 1);
+    }
+
     void mat_scale_inplace(CMatrix& A, int N, complexd alpha) {
-        size_t n = (size_t)N * N;
-        for (size_t k = 0; k < n; ++k) A[k] *= alpha;
+        const MKL_INT n = static_cast<MKL_INT>((size_t)N * N);
+        cblas_zscal(n, &alpha, A.data(), 1);
     }
 
     CMatrix mat_copy(const CMatrix& A) {

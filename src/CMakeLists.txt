@@ -13,6 +13,8 @@ add_library(computational_methods STATIC
     core/matrix/MatrixOperations.h
     core/utils/Utils.cpp
     core/utils/Utils.h
+    core/utils/ProblemSetup.cpp
+    core/utils/ProblemSetup.h
     core/magnus/ClassicMagnus.cpp
     core/magnus/ClassicMagnus.h
     core/magnus/AccMagnus.cpp
