@@ -140,15 +140,7 @@ Intel oneAPI command prompt for Intel 64 for Visual Studio 2022
 Рекомендуемый вариант с Visual Studio generator и Intel toolset:
 
 ```bat
-cmake -S . -B build\single_cpu ^
-  -G "Visual Studio 17 2022" ^
-  -A x64 ^
-  -T "Intel C++ Compiler 2025" ^
-  -DBUILD_SINGLE_CPU=ON ^
-  -DBUILD_SINGLE_GPU=OFF ^
-  -DBUILD_MULTI_CPU=OFF ^
-  -DBUILD_MULTI_GPU=OFF ^
-  -DBUILD_TESTS=OFF
+cmake -S . -B build\single_cpu -G "Visual Studio 17 2022" -A x64 -T "Intel C++ Compiler 2025" -DBUILD_SINGLE_CPU=ON -DBUILD_SINGLE_GPU=OFF -DBUILD_MULTI_CPU=OFF -DBUILD_MULTI_GPU=OFF -DBUILD_TESTS=OFF
 ```
 
 Если версия Intel toolset в вашей установке называется иначе, посмотрите доступные toolsets в Visual Studio Installer или CMake output и замените:
