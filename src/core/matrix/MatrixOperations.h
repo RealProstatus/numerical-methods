@@ -14,6 +14,7 @@ namespace matrix_ops {
     double mat_one_norm(const CMatrix& A, int N);
     void mat_add(const CMatrix& A, const CMatrix& B, CMatrix& C, int N);
     void mat_sub(const CMatrix& A, const CMatrix& B, CMatrix& C, int N);
+    void mat_axpy(const CMatrix& X, CMatrix& Y, int N, complexd alpha);
     void mat_scale_inplace(CMatrix& A, int N, complexd alpha);
     CMatrix mat_copy(const CMatrix& A);
     CMatrix mat_scale(const CMatrix& A, complexd alpha);

@@ -13,6 +13,8 @@ add_library(computational_methods STATIC
     core/matrix/MatrixOperations.h
     core/utils/Utils.cpp
     core/utils/Utils.h
+    core/utils/ProblemSetup.cpp
+    core/utils/ProblemSetup.h
     core/magnus/ClassicMagnus.cpp
     core/magnus/ClassicMagnus.h
     core/magnus/AccMagnus.cpp
@@ -37,6 +39,8 @@ target_link_libraries(computational_methods PUBLIC project_options mkl_dependenc
 add_library(one_cpu_solver STATIC
     solvers/single_cpu/PiecewiseMagnus.cpp
     solvers/single_cpu/PiecewiseMagnus.h
+    solvers/single_cpu/Formula314ChebyshevSolver.cpp
+    solvers/single_cpu/Formula314ChebyshevSolver.h
 )
 
 target_include_directories(one_cpu_solver PUBLIC
