@@ -29,6 +29,7 @@ x86/
 [Aa][Rr][Mm]64/
 [Aa][Rr][Mm]64[Ee][Cc]/
 bld/
+[Bb]uild/
 [Oo]bj/
 [Oo]ut/
 [Ll]og/
@@ -386,6 +387,16 @@ MSBuild_Logs/
 
 # BeatPulse healthcheck temp database
 healthchecksdb
+
+# Experiment outputs
+results/*
+!results/.gitkeep
+
+# Legacy experiment outputs written to the current working directory
+/experiment*_results.txt
+/experiment*_adaptive_inner.txt
+/magnus_experiment_results.txt
+/omega_timing.csv
 
 # Backup folder for Package Reference Convert tool in Visual Studio 2017
 MigrationBackup/
