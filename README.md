@@ -129,7 +129,7 @@ git submodule update --init --recursive
 Intel oneAPI command prompt for Intel 64 for Visual Studio 2022
 ```
 
-Или вручную активируйте окружение:
+Или вручную активируйте окружение в cmd:
 
 ```bat
 "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
@@ -140,7 +140,7 @@ Intel oneAPI command prompt for Intel 64 for Visual Studio 2022
 Рекомендуемый вариант с Visual Studio generator и Intel toolset:
 
 ```bat
-cmake -S . -B build\single_cpu -G "Visual Studio 17 2022" -A x64 -T "Intel C++ Compiler 2025" -DBUILD_SINGLE_CPU=ON -DBUILD_SINGLE_GPU=OFF -DBUILD_MULTI_CPU=OFF -DBUILD_MULTI_GPU=OFF -DBUILD_TESTS=OFF
+cmake -S . -B build\single_cpu -G "Visual Studio 17 2022" -A x64 -T "Intel C++ Compiler 2026" -DBUILD_SINGLE_CPU=ON -DBUILD_SINGLE_GPU=OFF -DBUILD_MULTI_CPU=ON -DBUILD_MULTI_GPU=OFF -DBUILD_TESTS=OFF
 ```
 
 Если версия Intel toolset в вашей установке называется иначе, посмотрите доступные toolsets в Visual Studio Installer или CMake output и замените:
@@ -150,6 +150,13 @@ Intel C++ Compiler 2025
 ```
 
 на актуальное имя.
+
+Сборка через Ninja для MPI-реализации
+```bat
+cmake -S . -B build -G "Ninja" -DCMAKE_CXX_COMPILER=icx -DBUILD_SINGLE_CPU=ON -DBUILD_MULTI_CPU=ON
+cmake --build build
+mpiexec -n 6 build\apps\multi_cpu\mpi_verification.exe
+```
 
 ### 3. Соберите `single_cpu`
 
