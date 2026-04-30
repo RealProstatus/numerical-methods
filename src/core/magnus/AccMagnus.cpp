@@ -160,16 +160,16 @@ CMatrix magnus_ACC(const vector<CMatrix>& A_full_samples, double dt_grid, int N,
     double T_total = dt_grid * (A_full_samples.size() - 1);
     CMatrix Omega_total(N * N, complexd(0.0, 0.0));
 
-    //CMatrix Omega1 = trapezoidal_integral(A_full_samples, dt_grid, N);
+    // Интегрирование (по умолчанию Simpson)
     CMatrix Omega1 = simpson_integral(A_full_samples, dt_grid, N);
     mat_add(Omega_total, Omega1, Omega_total, N);
     if (max_order < 2) return Omega_total;
 
     int M = A_full_samples.size();
-    if (M < 3) return Omega_total; // Для 2 и 4 порядка нужно минимум 3 точки
+    if (M < 3) return Omega_total;
 
+    // --- 2-й порядок ---
     CMatrix A_0 = A_full_samples[0];
-    CMatrix A_mid = A_full_samples[M / 2];
     CMatrix A_end = A_full_samples[M - 1];
 
     if (max_order >= 2) {
@@ -178,13 +178,36 @@ CMatrix magnus_ACC(const vector<CMatrix>& A_full_samples, double dt_grid, int N,
         mat_add(Omega_total, comm, Omega_total, N);
     }
 
-    if (max_order >= 6 && M >= 7) { // <-- Добавили проверку M >= 7 сюда
+    // --- 5-й порядок ---
+    if (max_order >= 5 && M >= 5) {
+        vector<CMatrix> nodes_5;
+
+        for (int k = 0; k <= 4; ++k) {
+            int idx = (k * (M - 1)) / 4;
+            nodes_5.push_back(A_full_samples[idx]);
+        }
+        CMatrix Om5 = compute_Omega5_ACC(nodes_5, N);
+
+        // Масштабируем бэээм
+        double h4 = std::pow(T_total, 4.0);
+        mat_scale_inplace(Om5, N, complexd(h4, 0.0));
+
+        mat_add(Omega_total, Om5, Omega_total, N);
+    }
+
+    // --- 6-й порядок ---
+    if (max_order >= 6 && M >= 7) {
         vector<CMatrix> nodes_6;
         for (int k = 0; k <= 6; ++k) {
             int idx = (k * (M - 1)) / 6;
             nodes_6.push_back(A_full_samples[idx]);
         }
         CMatrix Om6 = compute_Omega6_ACC(nodes_6, N);
+
+        // Масштабируем бээээээм
+        double h5 = std::pow(T_total, 5.0);
+        mat_scale_inplace(Om6, N, complexd(h5, 0.0));
+
         mat_add(Omega_total, Om6, Omega_total, N);
     }
 
