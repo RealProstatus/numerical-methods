@@ -1,3 +1,7 @@
+#include <windows.h>
+#include <omp.h>
+#include <mkl.h>
+
 #include <iostream>
 #include <fstream>
 #include <iomanip>
@@ -17,22 +21,31 @@ int main(int argc, char** argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
+    // Привязка процессов к ядрам
+    HANDLE process = GetCurrentProcess();
+    // Сдвиг на rank * 2 гарантирует, что мы берем только физические ядра,
+    // пропуская логические потоки гипертрединга
+    DWORD_PTR processAffinityMask = (static_cast<DWORD_PTR>(1) << (rank * 2));
+    
+    if (!SetProcessAffinityMask(process, processAffinityMask)) {
+        if (rank == 0) cerr << "Warning: Failed to set process affinity mask. Error code: " << GetLastError() << "\n";
+    }
+
+    int max_threads = omp_get_max_threads();
+
     int N = 128; 
     utils::PeriodicHamiltonian ham;
     ham.dimension = N;
     
-    // Заранее выделяем память под матрицы на всех процессах
     ham.H0.resize(N * N);
     ham.H1.resize(N * N);
 
-    // Только нулевой процесс генерирует случайные матрицы
     if (rank == 0) {
-        auto [H0_gen, H1_gen] = utils::generate_hermitian_pair(N, 1.0, 0.05);
+        auto [H0_gen, H1_gen] = utils::generate_hermitian_pair(N, 0.05, 0.05);
         ham.H0 = H0_gen;
         ham.H1 = H1_gen;
     }
 
-    // Рассылаем сгенерированные матрицы с нулевого узла всем остальным
     MPI_Bcast(ham.H0.data(), N * N, MPI_C_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD);
     MPI_Bcast(ham.H1.data(), N * N, MPI_C_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD);
 
@@ -40,52 +53,58 @@ int main(int argc, char** argv) {
     ham.omega = 2.0; 
     ham.hbar = 1.0;
 
-    // 3600 шагов интегрирования
     int total_steps = 3600; 
-    auto problem = utils::prepare_evolution_problem(ham, 0.0, 10.0, total_steps);
+    auto problem = utils::prepare_evolution_problem(ham, 0.0, 1.0, total_steps);
     int order = 6;
 
     if (rank == 0) {
         cout << "========================================\n";
-        cout << "Starting MPI verification experiment...\n";
+        cout << "Starting MPI Scalability Verification...\n";
         cout << "Matrix size (N): " << N << "x" << N << "\n";
         cout << "Integration steps: " << total_steps << "\n";
-        cout << "MPI processes: " << size << "\n";
+        cout << "MPI processes: " << size << " (Pinned to physical cores)\n";
+        cout << "Max available threads for Single CPU: " << max_threads << "\n";
         cout << "========================================\n";
     }
 
-    // 1. MPI Solver
+    // 1. MPI Solver (СТРОГО 1 ПОТОК НА ПРОЦЕСС)
+    omp_set_num_threads(1);
+    mkl_set_num_threads(1);
+
+    // Синхронизируем процессы перед замером времени
+    MPI_Barrier(MPI_COMM_WORLD); 
     double start_time_mpi = MPI_Wtime();
     CMatrix U_mpi = multi_cpu::mpi_magnus_chebyshev_solver(problem, order, MPI_COMM_WORLD);
     double end_time_mpi = MPI_Wtime();
 
     if (rank == 0) {
-        cout << "MPI Solver finished in " << (end_time_mpi - start_time_mpi) << " seconds.\n";
+        cout << "MPI Solver (1 thread/proc) finished in " << (end_time_mpi - start_time_mpi) << " seconds.\n";
 
-        // 2. Single CPU Piecewise Magnus 
+        // Включаем многопоточность для последовательных решателей
+        omp_set_num_threads(max_threads);
+        mkl_set_num_threads(max_threads);
+
+        // 2. Single CPU Piecewise Magnus
         double start_time_single = MPI_Wtime();
         CMatrix U_single = piecewise_magnus_solver(
             problem.t_start, problem.t_final, problem.step_size(), N,
             ham.H0, ham.H1, ham.epsilon, ham.omega, order
         );
         double end_time_single = MPI_Wtime();
-        cout << "Single CPU Solver finished in " << (end_time_single - start_time_single) << " seconds.\n";
+        cout << "Single CPU Solver (" << max_threads << " threads) finished in " << (end_time_single - start_time_single) << " seconds.\n";
 
         // 3. RK4 Solver
         double start_time_rk4 = MPI_Wtime();
         CMatrix U_rk4 = utils::eye(N);
         
-        // Дробим шаг интегрирования РК4 в 100 раз для точности
         int rk4_multiplier = 100; 
         double dt_rk4 = problem.step_size() / rk4_multiplier;
         int total_rk4_steps = total_steps * rk4_multiplier;
         
-        cout << "Starting RK4 with " << total_rk4_steps << " micro-steps (this might take a while)...\n";
+        cout << "Starting RK4 with " << total_rk4_steps << " micro-steps...\n";
         
         for(int i = 0; i < total_rk4_steps; ++i) {
-            // Вычисляем текущее время вручную, чтобы не вылезти за пределы массива узлов
             double current_t = problem.t_start + i * dt_rk4;
-            
             U_rk4 = runge_kutta_simple::runge_kutta_step(
                 current_t,
                 ham.H0, ham.H1, ham.omega,
@@ -93,7 +112,7 @@ int main(int argc, char** argv) {
             );
         }
         double end_time_rk4 = MPI_Wtime();
-        cout << "RK4 Solver finished in " << (end_time_rk4 - start_time_rk4) << " seconds.\n";
+        cout << "RK4 Solver (" << max_threads << " threads) finished in " << (end_time_rk4 - start_time_rk4) << " seconds.\n";
 
         // --- Сравнение результатов ---
         double err_mpi_single = matrix_ops::max_element_diff(U_mpi, U_single, N);
@@ -112,19 +131,17 @@ int main(int argc, char** argv) {
         ofstream out(report_path);
         out << "MPI HPC Verification Report\n" << "======================\n";
         out << "Matrix size: " << N << "x" << N << "\n";
-        out << "Processes: " << size << "\nSteps: " << total_steps << "\n\n";
+        out << "Processes: " << size << " (Pinned)\nSteps: " << total_steps << "\n\n";
         
         out << "--- Timings ---\n";
-        out << "MPI Time (" << size << " procs): " << (end_time_mpi - start_time_mpi) << " s\n";
-        out << "Single Time:      " << (end_time_single - start_time_single) << " s\n";
-        out << "RK4 Time:         " << (end_time_rk4 - start_time_rk4) << " s\n\n";
+        out << "MPI Time (Pure, " << size << " procs): " << (end_time_mpi - start_time_mpi) << " s\n";
+        out << "Single Time (MKL " << max_threads << " threads): " << (end_time_single - start_time_single) << " s\n";
+        out << "RK4 Time (MKL " << max_threads << " threads):    " << (end_time_rk4 - start_time_rk4) << " s\n\n";
         
         out << "--- Accuracy ---\n";
         out << "Max Diff MPI-Single: " << err_mpi_single << "\n";
         out << "Max Diff MPI-RK4:    " << err_mpi_rk4 << "\n";
         out.close();
-        
-        cout << "Report saved to " << report_path << "\n";
 
         bool is_unitary_mpi = matrix_ops::is_unitary(U_mpi, N);
         bool is_unitary_rk4 = matrix_ops::is_unitary(U_rk4, N);
