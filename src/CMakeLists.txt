@@ -48,3 +48,22 @@ target_include_directories(one_cpu_solver PUBLIC
 )
 
 target_link_libraries(one_cpu_solver PUBLIC computational_methods)
+
+if(BUILD_MULTI_CPU)
+    add_library(multi_cpu_solver STATIC
+        solvers/multi_cpu/MpiMagnusChebyshev.cpp
+        solvers/multi_cpu/MpiMagnusChebyshev.h
+    )
+
+    target_include_directories(multi_cpu_solver PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/solvers/multi_cpu"
+    )
+
+    # computational_methods и one_cpu_solver — транзитивные зависимости:
+    # предоставляют include-пути к core-заголовкам и PiecewiseMagnus.h
+    target_link_libraries(multi_cpu_solver PUBLIC
+        computational_methods
+        one_cpu_solver
+        MPI::MPI_CXX
+    )
+endif()

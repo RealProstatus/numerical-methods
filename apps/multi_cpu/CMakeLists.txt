@@ -1,0 +1,3 @@
+add_executable(mpi_verification mpi_verification.cpp)
+
+target_link_libraries(mpi_verification PRIVATE multi_cpu_solver)
