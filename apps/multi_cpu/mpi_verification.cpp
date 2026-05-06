@@ -23,23 +23,29 @@ int main(int argc, char** argv) {
 
     // Привязка процессов к ядрам
     HANDLE process = GetCurrentProcess();
-    // Сдвиг на rank * 2 гарантирует, что мы берем только физические ядра,
-    // пропуская логические потоки гипертрединга
-    DWORD_PTR processAffinityMask = (static_cast<DWORD_PTR>(1) << (rank * 2));
     
-    if (!SetProcessAffinityMask(process, processAffinityMask)) {
-        if (rank == 0) cerr << "Warning: Failed to set process affinity mask. Error code: " << GetLastError() << "\n";
-    }
+    // 1. Запоминаем изначальные маски ОС, чтобы потом вернуть всё как было, чтобы просчитывать РК4 и one-CPU магнуса на 6 потоках
+    DWORD_PTR processAffinityMask, systemAffinityMask;
+    GetProcessAffinityMask(process, &processAffinityMask, &systemAffinityMask);
+    DWORD_PTR originalMask = processAffinityMask;
 
-    int max_threads = omp_get_max_threads();
+    // 2. Узнаем реальное количество логических процессоров в системе
+    // для i5 11400f - 6 шутк без гипертрединга
+    int max_threads = 6;
+
+    // 3. Привязываем текущий MPI-процесс к своему физическому ядру
+    DWORD_PTR mpiAffinityMask = (static_cast<DWORD_PTR>(1) << (rank * 2));
+    if (!SetProcessAffinityMask(process, mpiAffinityMask)) {
+        if (rank == 0) cerr << "Warning: Failed to set process affinity mask.\n";
+    }
 
     int N = 128; 
     utils::PeriodicHamiltonian ham;
     ham.dimension = N;
-    
     ham.H0.resize(N * N);
     ham.H1.resize(N * N);
 
+    // Генерация матриц гамильтониана
     if (rank == 0) {
         auto [H0_gen, H1_gen] = utils::generate_hermitian_pair(N, 0.05, 0.05);
         ham.H0 = H0_gen;
@@ -67,11 +73,10 @@ int main(int argc, char** argv) {
         cout << "========================================\n";
     }
 
-    // 1. MPI Solver (СТРОГО 1 ПОТОК НА ПРОЦЕСС)
+    // 1. MPI Solver (1 процесс на 1 ядро, 1 поток для 1 процесса для чистоты сравнения)
     omp_set_num_threads(1);
     mkl_set_num_threads(1);
 
-    // Синхронизируем процессы перед замером времени
     MPI_Barrier(MPI_COMM_WORLD); 
     double start_time_mpi = MPI_Wtime();
     CMatrix U_mpi = multi_cpu::mpi_magnus_chebyshev_solver(problem, order, MPI_COMM_WORLD);
