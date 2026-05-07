@@ -67,7 +67,6 @@ namespace matrix_ops {
 
         // ------------------------------
         // 120 permutations for Omega_6
-        // Already 0-based (i.e. {1,2,3,4,5,6} -> {0,1,2,3,4,5})
         // ------------------------------
         static const std::vector<VI> perms = {
             {1,2,3,4,5},{1,2,3,5,4},{1,2,4,3,5},{1,2,4,5,3},
@@ -188,7 +187,6 @@ CMatrix magnus_ACC(const vector<CMatrix>& A_full_samples, double dt_grid, int N,
         }
         CMatrix Om5 = compute_Omega5_ACC(nodes_5, N);
 
-        // Масштабируем бэээм
         double h4 = std::pow(T_total, 4.0);
         mat_scale_inplace(Om5, N, complexd(h4, 0.0));
 
@@ -204,7 +202,6 @@ CMatrix magnus_ACC(const vector<CMatrix>& A_full_samples, double dt_grid, int N,
         }
         CMatrix Om6 = compute_Omega6_ACC(nodes_6, N);
 
-        // Масштабируем бээээээм
         double h5 = std::pow(T_total, 5.0);
         mat_scale_inplace(Om6, N, complexd(h5, 0.0));
 

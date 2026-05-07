@@ -4,13 +4,8 @@
 using namespace std;
 using namespace matrix_ops;
 
-// =============================================================
-// ===================== Magnus via formula 3.14 ===============
-// =============================================================
-
 CMatrix magnus_3_14(double t0, double t1, double dt, int N, const CMatrix& H0, const CMatrix& H_mod, double eps0, double W)
 {
-    //vector<CMatrix> A = generate_samples(t0, t1, dt, N, H0, H_mod, eps0, W);
     double h = t1 - t0;
     double t_half = 0.5 * (t0 + t1);
 

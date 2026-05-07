@@ -6,10 +6,6 @@
 using namespace std;
 using namespace matrix_ops;
 
-// ================================================================
-// =================== FULL ACCURACY Recursive Magnus =============
-// ================================================================
-
 CMatrix magnus_expansion(double t0, double t1, double integration_dt, int N,
     const CMatrix& H0, const CMatrix& H_mod,
     double eps0, double W, int max_n)
