@@ -2,6 +2,9 @@
 
 #include <mkl.h>
 #include <mkl_lapacke.h>
+#include <mkl_vml.h>
+#include <algorithm>
+#include <cassert>
 
 namespace matrix_ops {
     // 1. Basic matrix operations
@@ -25,13 +28,11 @@ namespace matrix_ops {
     }
 
     void mat_add(const CMatrix& A, const CMatrix& B, CMatrix& C, int N) {
-        size_t n = (size_t)N * N;
-        for (size_t k = 0; k < n; ++k) C[k] = A[k] + B[k];
+        vzAdd(N * N, (const void*)A.data(), (const void*)B.data(), (void*)C.data());
     }
 
     void mat_sub(const CMatrix& A, const CMatrix& B, CMatrix& C, int N) {
-        size_t n = (size_t)N * N;
-        for (size_t k = 0; k < n; ++k) C[k] = A[k] - B[k];
+        vzSub(N * N, (const void*)A.data(), (const void*)B.data(), (void*)C.data());
     }
 
     void mat_axpy(const CMatrix& X, CMatrix& Y, int N, complexd alpha) {
@@ -40,8 +41,7 @@ namespace matrix_ops {
     }
 
     void mat_scale_inplace(CMatrix& A, int N, complexd alpha) {
-        const MKL_INT n = static_cast<MKL_INT>((size_t)N * N);
-        cblas_zscal(n, &alpha, A.data(), 1);
+        cblas_zscal(N * N, &alpha, A.data(), 1);
     }
 
     CMatrix mat_copy(const CMatrix& A) {
@@ -50,8 +50,7 @@ namespace matrix_ops {
 
     CMatrix mat_scale(const CMatrix& A, complexd alpha) {
         CMatrix result = A;
-        for (size_t k = 0; k < result.size(); ++k)
-            result[k] *= alpha;
+        mat_scale_inplace(result, N, alpha);
         return result;
     }
 
@@ -204,12 +203,10 @@ namespace matrix_ops {
     CMatrix dagger(const CMatrix& A, int N)
     {
         CMatrix Adag(N * N);
-        for (int i = 0; i < N; ++i)
-            for (int j = 0; j < N; ++j)
-            {
-                // transpose + complex conjugation
-                Adag[utils::idx(i, j, N)] = std::conj(A[utils::idx(j, i, N)]);
-            }
+        complexd alpha(1.0, 0.0);
+        // mkl_zomatcopy вместо ручного цикла
+        // 'R' - Row-major, 'C' - Conjugate Transpose
+        mkl_zomatcopy('R', 'C', N, N, alpha, (const void*)A.data(), N, (void*)Adag.data(), N);
         return Adag;
     }
 
