@@ -18,13 +18,14 @@ namespace matrix_ops {
     }
 
     double mat_one_norm(const CMatrix& A, int N) {
-        double maxcol = 0.0;
-        for (int j = 0; j < N; ++j) {
-            double sum = 0.0;
-            for (int i = 0; i < N; ++i) sum += std::abs(A[utils::idx(i, j, N)]);
-            if (sum > maxcol) maxcol = sum;
+        std::vector<double> col_sums(N, 0.0);
+        for (int i = 0; i < N; ++i) {
+            for (int j = 0; j < N; ++j) {
+                // go through the row, incrementing the corresponding column counter
+                col_sums[j] += std::abs(A[utils::idx(i, j, N)]);
+            }
         }
-        return maxcol;
+        return *std::max_element(col_sums.begin(), col_sums.end());
     }
 
     void mat_add(const CMatrix& A, const CMatrix& B, CMatrix& C, int N) {
