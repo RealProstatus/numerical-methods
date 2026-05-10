@@ -1,4 +1,6 @@
-﻿#include <iomanip>
+﻿#if 0
+
+#include <iomanip>
 #include <chrono>
 #include "AllComputationalMethods.h"
 #include "RungeKutt.h"
@@ -738,5 +740,79 @@ int main() {
 
     results_txt.close();
     std::cout << "\nExperiment results written." << std::endl;
+    return 0;
+}
+
+#endif
+
+#include "AllComputationalMethods.h"
+#include "Utils.h"
+#include <iostream>
+#include <vector>
+#include <chrono>
+
+using namespace std;
+using namespace matrix_ops;
+
+int main() {
+    cout << "=== Starting HPC Roofline Benchmark ===" << endl;
+
+    // Параметры системы
+    int N = 512; // Достаточно большой N, чтобы загрузить кэш и ядра
+    double t0 = 0.0;
+    double t1 = 0.1;      // Отрезок интегрирования
+    double dt = 0.001;    // Шаг (100 сэмплов для ACC/Recursive)
+    double eps0 = 0.5;
+    double W = 2.0;
+    int num_runs = 10;    // Количество прогонов каждого метода
+
+    cout << "Matrix size: " << N << "x" << N << endl;
+    cout << "Number of runs per method: " << num_runs << endl;
+
+    // 1. Инициализация (используем функции из Utils)
+    CMatrix H0 = utils::generate_hermitian_matrix(N, 1.0);
+    CMatrix H_mod = utils::generate_hermitian_matrix(N, 1.0);
+
+    // Подготовка сэмплов для ACC и Recursive
+    vector<CMatrix> samples = generate_samples(t0, t1, dt, N, H0, H_mod, eps0, W);
+
+    // =======================================================
+    // Тест 1: ACC Magnus (до 6 порядка)
+    // =======================================================
+    cout << "\nRunning ACC Magnus (Order 6)..." << endl;
+    CMatrix Omega_ACC(N * N);
+    for (int i = 0; i < num_runs; ++i) {
+        Omega_ACC = magnus_ACC(samples, dt, N, 6);
+    }
+
+    // =======================================================
+    // Тест 2: Formula 3.14 (4 порядок)
+    // =======================================================
+    cout << "Running Formula 3.14..." << endl;
+    CMatrix Omega_314(N * N);
+    for (int i = 0; i < num_runs * 10; ++i) { // Крутим больше раз, т.к. она очень быстрая
+        Omega_314 = magnus_3_14(t0, t1, t1 - t0, N, H0, H_mod, eps0, W);
+    }
+
+    // =======================================================
+    // Тест 3: Recursive Magnus (например, 4 порядка)
+    // =======================================================
+    // cout << "Running Recursive Magnus (Order 4)..." << endl;
+    // CMatrix Omega_Rec(N * N);
+    // for (int i = 0; i < num_runs; ++i) {
+    //     Omega_Rec = magnus_expansion(t0, t1, dt, N, H0, H_mod, eps0, W, 4);
+    // }
+
+    // =======================================================
+    // Тест 4: Chebyshev Matrix Exponentiation
+    // =======================================================
+    cout << "Running Chebyshev Expm..." << endl;
+    CMatrix U_Cheb(N * N);
+    for (int i = 0; i < num_runs * 5; ++i) {
+        // Считаем экспоненту от Omega_ACC (M=15 членов ряда)
+        U_Cheb = expm_cheb(Omega_ACC, N, 15); 
+    }
+
+    cout << "\n=== Benchmark Finished Successfully ===" << endl;
     return 0;
 }
