@@ -68,12 +68,18 @@ namespace matrix_ops {
         return result;
     }
 
-    CMatrix iterated_commutator(const CMatrix& X, const CMatrix& Y, int k, int N) {
-        CMatrix result = mat_copy(Y);
-        for (int i = 0; i < k; ++i) {
-            result = commutator(X, result, N);
-        }
-        return result;
+    void commutator_inplace(const CMatrix& A, const CMatrix& B, CMatrix& result, int N) {
+        complexd alpha(1.0, 0.0);
+        complexd zero(0.0, 0.0);
+        complexd minus_alpha(-1.0, 0.0);
+
+        // 1. result = A * B
+        cblas_zgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+            N, N, N, &alpha, A.data(), N, B.data(), N, &zero, result.data(), N);
+
+        // 2. result = -1.0 * B * A + 1.0 * result
+        cblas_zgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+            N, N, N, &minus_alpha, B.data(), N, A.data(), N, &alpha, result.data(), N);
     }
 
     // 3. Matrix exponential (implemented in separate modules)
