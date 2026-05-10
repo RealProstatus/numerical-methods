@@ -219,22 +219,20 @@ namespace matrix_ops {
 
     bool is_unitary(const CMatrix& U, int N, double tol)
     {
-        // 1. U^\dagger
-        CMatrix Ud = dagger(U, N);
-
-        // 2. M = U^\dagger * U
         CMatrix M(N * N, complexd(0, 0));
-        matmul(Ud, U, M, N);
+        complexd alpha(1.0, 0.0), beta(0.0, 0.0);
+        
+        // M = U^\dagger * U (using CblasConjTrans)
+        cblas_zgemm(CblasRowMajor, CblasConjTrans, CblasNoTrans,
+            N, N, N, &alpha, U.data(), N, U.data(), N, &beta, M.data(), N);
 
-        // 3. E = M - I
+        // E = M - I
         CMatrix I = utils::eye(N);
         CMatrix E(N * N);
         mat_sub(M, I, E, N);
 
-        // 4. ||E||_1 < tol ?
-        double err = mat_one_norm(E, N);
-
-        return (err < tol);
+        // ||E||_1 < tol ?
+        return (mat_one_norm(E, N) < tol);
     }
 
     double max_element_diff(const CMatrix& A, const CMatrix& B, int N) {
