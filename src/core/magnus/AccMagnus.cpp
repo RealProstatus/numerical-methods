@@ -12,16 +12,20 @@ namespace matrix_ops {
     {
         int k = perm.size();
         if (k == 0) return CMatrix(N * N, complexd(0, 0));
+        if (k == 1) return A_samples[perm.back()];
 
-        // 1. Start from the innermost element (last index in perm)
-        CMatrix R = A_samples[perm.back()];
+        // Allocate only 2 buffers for the entire cycle
+        CMatrix R_curr = A_samples[perm.back()];
+        CMatrix R_next(N * N, complexd(0, 0));
 
-        // 2. Go from the second-last to the beginning
         for (int i = k - 2; i >= 0; --i) {
-            R = commutator(A_samples[perm[i]], R, N);
+            // R_next = [A_i, R_curr]
+            commutator_inplace(A_samples[perm[i]], R_curr, R_next, N);
+            
+            std::swap(R_curr, R_next); 
         }
 
-        return R;
+        return R_curr;
     }
 
     // =========================================================
