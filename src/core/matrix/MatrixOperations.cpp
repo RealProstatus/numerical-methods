@@ -29,11 +29,17 @@ namespace matrix_ops {
     }
 
     void mat_add(const CMatrix& A, const CMatrix& B, CMatrix& C, int N) {
-        vzAdd(N * N, (const void*)A.data(), (const void*)B.data(), (void*)C.data());
+        vzAdd(N * N, 
+              reinterpret_cast<const MKL_Complex16*>(A.data()), 
+              reinterpret_cast<const MKL_Complex16*>(B.data()), 
+              reinterpret_cast<MKL_Complex16*>(C.data()));
     }
 
     void mat_sub(const CMatrix& A, const CMatrix& B, CMatrix& C, int N) {
-        vzSub(N * N, (const void*)A.data(), (const void*)B.data(), (void*)C.data());
+        vzSub(N * N, 
+              reinterpret_cast<const MKL_Complex16*>(A.data()), 
+              reinterpret_cast<const MKL_Complex16*>(B.data()), 
+              reinterpret_cast<MKL_Complex16*>(C.data()));
     }
 
     void mat_axpy(const CMatrix& X, CMatrix& Y, int N, complexd alpha) {
@@ -51,7 +57,7 @@ namespace matrix_ops {
 
     CMatrix mat_scale(const CMatrix& A, complexd alpha) {
         CMatrix result = A;
-        mat_scale_inplace(result, N, alpha);
+        cblas_zscal(result.size(), &alpha, result.data(), 1);
         return result;
     }
 
@@ -210,10 +216,15 @@ namespace matrix_ops {
     CMatrix dagger(const CMatrix& A, int N)
     {
         CMatrix Adag(N * N);
-        complexd alpha(1.0, 0.0);
+
+        MKL_Complex16 mkl_alpha;
+        mkl_alpha.real = 1.0;
+        mkl_alpha.imag = 0.0;
         // mkl_zomatcopy вместо ручного цикла
         // 'R' - Row-major, 'C' - Conjugate Transpose
-        mkl_zomatcopy('R', 'C', N, N, alpha, (const void*)A.data(), N, (void*)Adag.data(), N);
+        mkl_zomatcopy('R', 'C', N, N, mkl_alpha, 
+                      reinterpret_cast<const MKL_Complex16*>(A.data()), N, 
+                      reinterpret_cast<MKL_Complex16*>(Adag.data()), N);
         return Adag;
     }
 
