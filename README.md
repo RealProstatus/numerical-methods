@@ -162,6 +162,7 @@ mpiexec -n 6 build\apps\multi_cpu\mpi_verification.exe
 
 ```bat
 cmake --build build\single_cpu --config Release --target single_cpu
+cmake --build build\single_cpu --config RelWithDebInfo --target single_cpu
 ```
 
 ### 4. Запустите приложение
