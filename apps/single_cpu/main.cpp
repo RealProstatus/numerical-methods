@@ -758,13 +758,13 @@ int main() {
     cout << "=== Starting HPC Roofline Benchmark ===" << endl;
 
     // Параметры системы
-    int N = 512; // Достаточно большой N, чтобы загрузить кэш и ядра
+    int N = 2048; // Достаточно большой N, чтобы загрузить кэш и ядра
     double t0 = 0.0;
     double t1 = 0.1;      // Отрезок интегрирования
-    double dt = 0.001;    // Шаг (100 сэмплов для ACC/Recursive)
+    double dt = 0.01;    // Шаг (10 сэмплов для ACC/Recursive)
     double eps0 = 0.5;
     double W = 2.0;
-    int num_runs = 10;    // Количество прогонов каждого метода
+    int num_runs = 1;    // Количество прогонов каждого метода
 
     cout << "Matrix size: " << N << "x" << N << endl;
     cout << "Number of runs per method: " << num_runs << endl;
@@ -806,12 +806,12 @@ int main() {
     // =======================================================
     // Тест 4: Chebyshev Matrix Exponentiation
     // =======================================================
-    cout << "Running Chebyshev Expm..." << endl;
-    CMatrix U_Cheb(N * N);
-    for (int i = 0; i < num_runs * 5; ++i) {
-        // Считаем экспоненту от Omega_ACC (M=15 членов ряда)
-        U_Cheb = expm_cheb(Omega_ACC, N, 15); 
-    }
+    // cout << "Running Chebyshev Expm..." << endl;
+    // CMatrix U_Cheb(N * N);
+    // for (int i = 0; i < num_runs * 5; ++i) {
+    //     // Считаем экспоненту от Omega_ACC (M=15 членов ряда)
+    //     U_Cheb = expm_cheb(Omega_ACC, N, 15); 
+    // }
 
     cout << "\n=== Benchmark Finished Successfully ===" << endl;
     return 0;
