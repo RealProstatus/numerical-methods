@@ -1,8 +1,26 @@
 #include "Formula314Magnus.h"
 #include "ClassicMagnus.h"
+#include <mkl.h>
 
 using namespace std;
 using namespace matrix_ops;
+
+namespace
+{
+    void accumulate_commutator(const CMatrix& A, const CMatrix& B, CMatrix& Result, int N, complexd alpha)
+    {
+        complexd minus_alpha = complexd(-alpha.real(), -alpha.imag());
+        complexd one = complexd(1.0, 0.0);
+
+        // Result = alpha * A * B + 1.0 * Result
+        cblas_zgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                    N, N, N, &alpha, A.data(), N, B.data(), N, &one, Result.data(), N);
+
+        // Result = (-alpha) * B * A + 1.0 * Result
+        cblas_zgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                    N, N, N, &minus_alpha, B.data(), N, A.data(), N, &one, Result.data(), N);
+    }
+}
 
 // =============================================================
 // ===================== Magnus via formula 3.14 ===============
@@ -10,7 +28,6 @@ using namespace matrix_ops;
 
 CMatrix magnus_3_14(double t0, double t1, double dt, int N, const CMatrix& H0, const CMatrix& H_mod, double eps0, double W)
 {
-    //vector<CMatrix> A = generate_samples(t0, t1, dt, N, H0, H_mod, eps0, W);
     double h = t1 - t0;
     double t_half = 0.5 * (t0 + t1);
 
@@ -24,8 +41,7 @@ CMatrix magnus_3_14(double t0, double t1, double dt, int N, const CMatrix& H0, c
     double f2_half = f2_fun(t_half);
     double f2_t1 = f2_fun(t1);
 
-    CMatrix Omega = compute_Omega_3_14(H0, H_mod, h, f_t1, f_half, fp_half, f2_half, f2_t1, N);
-    return Omega;
+    return compute_Omega_3_14(H0, H_mod, h, f_t1, f_half, fp_half, f2_half, f2_t1, N);
 }
 
 namespace matrix_ops {
@@ -40,130 +56,64 @@ namespace matrix_ops {
         double f2_t1,
         int N)
     {
-        auto zero = [&]() { return CMatrix((size_t)N * N, complexd(0.0, 0.0)); };
+        // Coeffs computing in advance
+        double h5 = h * h * h * h * h;
+        double h7 = h5 * h * h;
 
-        // ===== Compute commutators according to (3.15) =====
+        double c_Hmod  = h * (f_t1 + (h * h / 24.0) * f2_half) + (h5 / 240.0) * (-fp_half * fp_half); // Объединили 2-й и 5-й члены
+        double c_C1    = -(h * h * h / 12.0) * fp_half;
+        double c_C2    = (h5 / 7200.0) * f2_half;
+        double c_C3    = (h5 / 30.0) * f2_half * (f_half + 0.25 * h * h * f2_half);
+        double c_C4    = (h5 / 7200.0) * fp_half;
+        double c_C5    = (h5 / 7200.0) * (f_half * fp_half + 0.25 * h * h * f2_half);
+        double c_C6    = (h5 / 7200.0) * f_half * fp_half;
+        double c_C7    = (h5 / 7200.0) * (f_half * fp_half * (f_t1 + 0.25 * h * h * f2_half));
+        double c_C8    = -(h7 / 14400.0) * (fp_half * fp_half);
+        double c_C9    = -(h7 / 14400.0) * (fp_half * fp_half * f_half);
+
+        // Pre-allocate
+        CMatrix Omega((size_t)N * N);
+        CMatrix C1((size_t)N * N);
+        CMatrix C2((size_t)N * N);
+        CMatrix C3((size_t)N * N);
+
+        // NUMA First-Touch Policy: необходимо, чтобы каждое ядро "ходило" в свою NUMA Node
+        // сыграет роль, только если ядра принадлежат разным NUMA Nod`ам
+        #pragma omp parallel for schedule(static)
+        for (int i = 0; i < N * N; ++i) {
+            Omega[i] = complexd(0.0, 0.0);
+            C1[i] = complexd(0.0, 0.0);
+            C2[i] = complexd(0.0, 0.0);
+            C3[i] = complexd(0.0, 0.0);
+        }
+
+        mat_axpy(H0, Omega, N, complexd(h, 0.0));
+        mat_axpy(Hmod, Omega, N, complexd(c_Hmod, 0.0));
+
         // C1 = [H0, Hmod]
-        CMatrix C1 = commutator(H0, Hmod, N);
+        commutator_inplace(H0, Hmod, C1, N);
+        // adding to omega
+        mat_axpy(C1, Omega, N, complexd(c_C1, 0.0));
 
-        // C2 = [H0, C1], C3 = [Hmod, C1]
-        CMatrix C2 = commutator(H0, C1, N);
-        CMatrix C3 = commutator(Hmod, C1, N);
+        // C2 = [H0, C1]
+        commutator_inplace(H0, C1, C2, N);
+        // adding to omega
+        mat_axpy(C2, Omega, N, complexd(c_C2, 0.0));
 
-        // C4 = [H0, C2], C5 = [Hmod, C2]
-        CMatrix C4 = commutator(H0, C2, N);
-        CMatrix C5 = commutator(Hmod, C2, N);
+        // C4 = [H0, C2], C5 = [Hmod, C2], C8 = [C1, C2]
+        accumulate_commutator(H0, C2, Omega, N, complexd(c_C4, 0.0));
+        accumulate_commutator(Hmod, C2, Omega, N, complexd(c_C5, 0.0));
+        accumulate_commutator(C1, C2, Omega, N, complexd(c_C8, 0.0));
 
-        // C6 = [H0, C3], C7 = [Hmod, C3]
-        CMatrix C6 = commutator(H0, C3, N);
-        CMatrix C7 = commutator(Hmod, C3, N);
+        // C3 = [Hmod, C1]
+        commutator_inplace(Hmod, C1, C3, N);
+        // adding to omega
+        mat_axpy(C3, Omega, N, complexd(c_C3, 0.0));
 
-        // C8 = [C1, C2], C9 = [C1, C3]
-        CMatrix C8 = commutator(C1, C2, N);
-        CMatrix C9 = commutator(C1, C3, N);
-
-        // ===== Begin constructing Omega =====
-        CMatrix Omega = zero();
-
-        auto add = [&](const CMatrix& M) { mat_add(Omega, M, Omega, N); };
-
-        // 1) h H0
-        {
-            CMatrix term = H0;
-            mat_scale_inplace(term, N, complexd(h, 0.0));
-            add(term);
-        }
-
-        // 2) h * ( f(t1) + (h^2/24) f''(t1/2) ) * Hmod
-        {
-            double c = f_t1 + (h * h / 24.0) * f2_half;
-            CMatrix term = Hmod;
-            mat_scale_inplace(term, N, complexd(h * c, 0.0));
-            add(term);
-        }
-
-        // 3) - (1/12) h^3 f'(t1/2) C1
-        {
-            CMatrix term = C1;
-            double c = -(h * h * h / 12.0) * fp_half;
-            mat_scale_inplace(term, N, complexd(c, 0));
-            add(term);
-        }
-
-        // 4) + (1/7200) h^5 f''(t1/2) * C2
-        {
-            CMatrix term = C2;
-            double c = (h * h * h * h * h / 7200.0) * f2_half;
-            mat_scale_inplace(term, N, complexd(c, 0));
-            add(term);
-        }
-
-        // 5) + (1/240) h^5 * ( - (f'(t1/2))^2 ) * Hmod
-        {
-            CMatrix term = Hmod;
-            double c = (h * h * h * h * h / 240.0) * (-fp_half * fp_half);
-            mat_scale_inplace(term, N, complexd(c, 0));
-            add(term);
-        }
-
-        // 6) + (1/30) h^5 f''(t1/2)*( f(t1/2)+1/4 h^2 f''(t1/2) ) * C3
-        {
-            double s = f_half + 0.25 * h * h * f2_half;
-            double c = (h * h * h * h * h / 30.0) * (f2_half * s);
-            CMatrix term = C3;
-            mat_scale_inplace(term, N, complexd(c, 0));
-            add(term);
-        }
-
-        // 7) + (1/7200) h^5 f'(t1/2) * C4
-        {
-            double c = (h * h * h * h * h / 7200.0) * fp_half;
-            CMatrix term = C4;
-            mat_scale_inplace(term, N, complexd(c, 0));
-            add(term);
-        }
-
-        // 8) + (1/7200) h^5 ( f(t1/2) f'(t1/2) + 1/4 h^2 f''(t1/2) ) * C5
-        {
-            double s = f_half * fp_half + 0.25 * h * h * f2_half;
-            double c = (h * h * h * h * h / 7200.0) * s;
-            CMatrix term = C5;
-            mat_scale_inplace(term, N, complexd(c, 0));
-            add(term);
-        }
-
-        // 9) + (1/7200) h^5 f(t1/2) f'(t1/2) * C6
-        {
-            double c = (h * h * h * h * h / 7200.0) * (f_half * fp_half);
-            CMatrix term = C6;
-            mat_scale_inplace(term, N, complexd(c, 0));
-            add(term);
-        }
-
-        // 10) + (1/7200) h^5 f(t1/2) f'(t1/2) ( f(t1) + 1/4 h^2 f''(t1/2) ) * C7
-        {
-            double s = f_t1 + 0.25 * h * h * f2_half;
-            double c = (h * h * h * h * h / 7200.0) * (f_half * fp_half * s);
-            CMatrix term = C7;
-            mat_scale_inplace(term, N, complexd(c, 0));
-            add(term);
-        }
-
-        // 11) - (1/14400) h^7 (f'(t1/2))^2 * C8
-        {
-            double c = -(h * h * h * h * h * h * h / 14400.0) * (fp_half * fp_half);
-            CMatrix term = C8;
-            mat_scale_inplace(term, N, complexd(c, 0));
-            add(term);
-        }
-
-        // 12) - (1/14400) h^7 (f'(t1/2))^2 f(t1/2) * C9
-        {
-            double c = -(h * h * h * h * h * h * h / 14400.0) * (fp_half * fp_half * f_half);
-            CMatrix term = C9;
-            mat_scale_inplace(term, N, complexd(c, 0));
-            add(term);
-        }
+        // C6 = [H0, C3], C7 = [Hmod, C3], C9 = [C1, C3]
+        accumulate_commutator(H0, C3, Omega, N, complexd(c_C6, 0.0));
+        accumulate_commutator(Hmod, C3, Omega, N, complexd(c_C7, 0.0));
+        accumulate_commutator(C1, C3, Omega, N, complexd(c_C9, 0.0));
 
         return Omega;
     }

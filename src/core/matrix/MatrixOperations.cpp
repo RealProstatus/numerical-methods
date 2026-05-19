@@ -2,6 +2,9 @@
 
 #include <mkl.h>
 #include <mkl_lapacke.h>
+#include <mkl_vml.h>
+#include <algorithm>
+#include <cassert>
 
 namespace matrix_ops {
     // 1. Basic matrix operations
@@ -15,23 +18,22 @@ namespace matrix_ops {
     }
 
     double mat_one_norm(const CMatrix& A, int N) {
-        double maxcol = 0.0;
-        for (int j = 0; j < N; ++j) {
-            double sum = 0.0;
-            for (int i = 0; i < N; ++i) sum += std::abs(A[utils::idx(i, j, N)]);
-            if (sum > maxcol) maxcol = sum;
-        }
-        return maxcol;
+        // maximum column summ
+        return LAPACKE_zlange(LAPACK_ROW_MAJOR, '1', N, N, reinterpret_cast<const MKL_Complex16*>(A.data()), N);
     }
 
     void mat_add(const CMatrix& A, const CMatrix& B, CMatrix& C, int N) {
-        size_t n = (size_t)N * N;
-        for (size_t k = 0; k < n; ++k) C[k] = A[k] + B[k];
+        vzAdd(N * N, 
+              reinterpret_cast<const MKL_Complex16*>(A.data()), 
+              reinterpret_cast<const MKL_Complex16*>(B.data()), 
+              reinterpret_cast<MKL_Complex16*>(C.data()));
     }
 
     void mat_sub(const CMatrix& A, const CMatrix& B, CMatrix& C, int N) {
-        size_t n = (size_t)N * N;
-        for (size_t k = 0; k < n; ++k) C[k] = A[k] - B[k];
+        vzSub(N * N, 
+              reinterpret_cast<const MKL_Complex16*>(A.data()), 
+              reinterpret_cast<const MKL_Complex16*>(B.data()), 
+              reinterpret_cast<MKL_Complex16*>(C.data()));
     }
 
     void mat_axpy(const CMatrix& X, CMatrix& Y, int N, complexd alpha) {
@@ -40,8 +42,7 @@ namespace matrix_ops {
     }
 
     void mat_scale_inplace(CMatrix& A, int N, complexd alpha) {
-        const MKL_INT n = static_cast<MKL_INT>((size_t)N * N);
-        cblas_zscal(n, &alpha, A.data(), 1);
+        cblas_zscal(N * N, &alpha, A.data(), 1);
     }
 
     CMatrix mat_copy(const CMatrix& A) {
@@ -50,8 +51,7 @@ namespace matrix_ops {
 
     CMatrix mat_scale(const CMatrix& A, complexd alpha) {
         CMatrix result = A;
-        for (size_t k = 0; k < result.size(); ++k)
-            result[k] *= alpha;
+        cblas_zscal(result.size(), &alpha, result.data(), 1);
         return result;
     }
 
@@ -68,12 +68,18 @@ namespace matrix_ops {
         return result;
     }
 
-    CMatrix iterated_commutator(const CMatrix& X, const CMatrix& Y, int k, int N) {
-        CMatrix result = mat_copy(Y);
-        for (int i = 0; i < k; ++i) {
-            result = commutator(X, result, N);
-        }
-        return result;
+    void commutator_inplace(const CMatrix& A, const CMatrix& B, CMatrix& result, int N) {
+        complexd alpha(1.0, 0.0);
+        complexd zero(0.0, 0.0);
+        complexd minus_alpha(-1.0, 0.0);
+
+        // 1. result = A * B
+        cblas_zgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+            N, N, N, &alpha, A.data(), N, B.data(), N, &zero, result.data(), N);
+
+        // 2. result = -1.0 * B * A + 1.0 * result
+        cblas_zgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+            N, N, N, &minus_alpha, B.data(), N, A.data(), N, &alpha, result.data(), N);
     }
 
     // 3. Matrix exponential (implemented in separate modules)
@@ -204,33 +210,34 @@ namespace matrix_ops {
     CMatrix dagger(const CMatrix& A, int N)
     {
         CMatrix Adag(N * N);
-        for (int i = 0; i < N; ++i)
-            for (int j = 0; j < N; ++j)
-            {
-                // transpose + complex conjugation
-                Adag[utils::idx(i, j, N)] = std::conj(A[utils::idx(j, i, N)]);
-            }
+
+        MKL_Complex16 mkl_alpha;
+        mkl_alpha.real = 1.0;
+        mkl_alpha.imag = 0.0;
+        // mkl_zomatcopy вместо ручного цикла
+        // 'R' - Row-major, 'C' - Conjugate Transpose
+        mkl_zomatcopy('R', 'C', N, N, mkl_alpha, 
+                      reinterpret_cast<const MKL_Complex16*>(A.data()), N, 
+                      reinterpret_cast<MKL_Complex16*>(Adag.data()), N);
         return Adag;
     }
 
     bool is_unitary(const CMatrix& U, int N, double tol)
     {
-        // 1. U^\dagger
-        CMatrix Ud = dagger(U, N);
-
-        // 2. M = U^\dagger * U
         CMatrix M(N * N, complexd(0, 0));
-        matmul(Ud, U, M, N);
+        complexd alpha(1.0, 0.0), beta(0.0, 0.0);
+        
+        // M = U^\dagger * U (using CblasConjTrans)
+        cblas_zgemm(CblasRowMajor, CblasConjTrans, CblasNoTrans,
+            N, N, N, &alpha, U.data(), N, U.data(), N, &beta, M.data(), N);
 
-        // 3. E = M - I
+        // E = M - I
         CMatrix I = utils::eye(N);
         CMatrix E(N * N);
         mat_sub(M, I, E, N);
 
-        // 4. ||E||_1 < tol ?
-        double err = mat_one_norm(E, N);
-
-        return (err < tol);
+        // ||E||_1 < tol ?
+        return (mat_one_norm(E, N) < tol);
     }
 
     double max_element_diff(const CMatrix& A, const CMatrix& B, int N) {

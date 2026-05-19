@@ -22,10 +22,8 @@ namespace matrix_ops {
     // Commutator: [A, B] = A*B - B*A
     CMatrix commutator(const CMatrix& A, const CMatrix& B, int N);
 
-    // Iterated commutator: ad_X^k(Y) = [X, [X, ...[X, Y]...]] (k times)
-    CMatrix iterated_commutator(const CMatrix& X, const CMatrix& Y, int k, int N);
-
-
+    // Better commutator
+    void commutator_inplace(const CMatrix& A, const CMatrix& B, CMatrix& result, int N);
 
     // Magnus expansion helpers
     double bernoulli_number(int j);

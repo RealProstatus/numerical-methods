@@ -1,5 +1,6 @@
 #include "AccMagnus.h"
 #include "ClassicMagnus.h"
+#include <mkl.h>
 
 using namespace std;
 using namespace matrix_ops;
@@ -12,16 +13,45 @@ namespace matrix_ops {
     {
         int k = perm.size();
         if (k == 0) return CMatrix(N * N, complexd(0, 0));
+        if (k == 1) return A_samples[perm.back()];
 
-        // 1. Start from the innermost element (last index in perm)
-        CMatrix R = A_samples[perm.back()];
+        // Allocate only 2 buffers for the entire cycle
+        CMatrix R_curr = A_samples[perm.back()];
+        CMatrix R_next(N * N, complexd(0, 0));
 
-        // 2. Go from the second-last to the beginning
         for (int i = k - 2; i >= 0; --i) {
-            R = commutator(A_samples[perm[i]], R, N);
+            // R_next = [A_i, R_curr]
+            commutator_inplace(A_samples[perm[i]], R_curr, R_next, N);
+            
+            std::swap(R_curr, R_next); 
         }
 
-        return R;
+        return R_curr;
+    }
+
+    // MOre fast right-nested commutator
+    void right_nested_comm_fast(const vector<CMatrix>& A_samples, const vector<int>& perm, int N, CMatrix& R_curr, CMatrix& R_next)
+    {
+        int k = perm.size();
+        if (k == 0) {
+            // Если перестановка пустая (хотя в ACC такого не бывает), зануляем
+            memset(R_curr.data(), 0, R_curr.size() * sizeof(complexd));
+            return;
+        }
+        
+        // Вместо аллокации CMatrix R_curr делаем прямое копирование памяти (memcpy) 
+        // в уже выделенный буфер R_curr
+        cblas_zcopy(N * N, A_samples[perm.back()].data(), 1, R_curr.data(), 1);
+
+        if (k == 1) return;
+
+        for (int i = k - 2; i >= 0; --i) {
+            // Считаем [A_i, R_curr] и кладем результат в R_next
+            commutator_inplace(A_samples[perm[i]], R_curr, R_next, N);
+
+            std::swap(R_curr, R_next); 
+        }
+        // Финальный результат лежит в R_curr
     }
 
     // =========================================================
@@ -48,10 +78,17 @@ namespace matrix_ops {
 
         CMatrix sum(N * N, complexd(0, 0));
 
+        // Pre-allocation
+        CMatrix workspace_curr(N * N);
+        CMatrix workspace_next(N * N);
+
         for (size_t i = 0; i < perms.size(); ++i) {
-            CMatrix comm = right_nested_comm(A, perms[i], N);
-            mat_scale_inplace(comm, N, complexd(coeffs[i], 0));
-            mat_add(sum, comm, sum, N);
+            // Передаем буферы по ссылке
+            right_nested_comm_fast(A, perms[i], N, workspace_curr, workspace_next); 
+            
+            // Масштабируем результат (в workspace_curr)
+            mat_scale_inplace(workspace_curr, N, complexd(coeffs[i], 0)); 
+            mat_add(sum, workspace_curr, sum, N);
         }
 
         return sum;
@@ -140,12 +177,19 @@ namespace matrix_ops {
         // -------------------------------------------------
         CMatrix sum(N * N, complexd(0, 0));
 
+        // Pre-allocation
+        CMatrix workspace_curr(N * N);
+        CMatrix workspace_next(N * N);
+
         for (size_t i = 0; i < perms.size(); ++i)
         {
-            CMatrix R = right_nested_comm(A, perms[i], N);
-            mat_scale_inplace(R, N, complexd(coeffs[i], 0));
-            mat_add(sum, R, sum, N);
-        }
+            // Передаем буферы по ссылке
+            right_nested_comm_fast(A, perms[i], N, workspace_curr, workspace_next); 
+            
+            // Масштабируем результат (лежит в workspace_curr)
+            mat_scale_inplace(workspace_curr, N, complexd(coeffs[i], 0)); 
+            mat_add(sum, workspace_curr, sum, N);
+            }
 
         return sum;
     }
