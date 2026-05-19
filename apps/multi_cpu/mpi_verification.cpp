@@ -1,12 +1,13 @@
 #include <windows.h>
 #include <omp.h>
 #include <mkl.h>
-
 #include <iostream>
 #include <fstream>
 #include <iomanip>
 #include <cmath>
 #include <mpi.h>
+#include <cstdlib>
+
 #include "MpiMagnusChebyshev.h"
 #include "PiecewiseMagnus.h"
 #include "RungeKutt.h"
@@ -15,37 +16,63 @@
 
 using namespace std;
 
+// здесь наверняка есть излишние фиксы и ограничения, возможно стоит потом отключить некоторые из них
+// все они сделаны ради того, чтобы single cpu magnus и rk4 могли считаться на всех 6 потоках
 int main(int argc, char** argv) {
+    // =====================================================================
+    // Фикс 1: убираем интеловскую автоматику
+    // Отключаем привязку от mpiexec и жесткую логику OpenMP
+    // =====================================================================
+    _putenv("I_MPI_PIN=0");             
+    _putenv("KMP_AFFINITY=disabled");   
+
     MPI_Init(&argc, &argv);
     int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    // Привязка процессов к ядрам
     HANDLE process = GetCurrentProcess();
     
-    // 1. Запоминаем изначальные маски ОС, чтобы потом вернуть всё как было, чтобы просчитывать РК4 и one-CPU магнуса на 6 потоках
+    // Считываем системные маски
     DWORD_PTR processAffinityMask, systemAffinityMask;
     GetProcessAffinityMask(process, &processAffinityMask, &systemAffinityMask);
-    DWORD_PTR originalMask = processAffinityMask;
 
-    // 2. Узнаем реальное количество логических процессоров в системе
-    // для i5 11400f - 6 шутк без гипертрединга
     int max_threads = 6;
 
-    // 3. Привязываем текущий MPI-процесс к своему физическому ядру
-    DWORD_PTR mpiAffinityMask = (static_cast<DWORD_PTR>(1) << (rank * 2));
-    if (!SetProcessAffinityMask(process, mpiAffinityMask)) {
-        if (rank == 0) cerr << "Warning: Failed to set process affinity mask.\n";
+    // =====================================================================
+    // Фикс 2: прогрев OpenMP на всех ядрах
+    // Даем процессу все ядра и заставляем OpenMP инициализировать
+    // пул из 6 потоков. Теперь OpenMP знает, что ядер 6, и потоки свободны.
+    // =====================================================================
+    SetProcessAffinityMask(process, systemAffinityMask);
+    omp_set_num_threads(max_threads);
+    #pragma omp parallel
+    {
+        // Здесь могла бы быть ваша реклама
     }
 
-    int N = 2048;
+    // Привязываем текущий MPI-процесс к своему одному ядру
+    DWORD_PTR mpiAffinityMask = 0;
+    int core_counter = 0;
+    for (int bit = 0; bit < sizeof(DWORD_PTR) * 8; ++bit) {
+        if ((systemAffinityMask >> bit) & 1) {
+            if (core_counter == rank) {
+                mpiAffinityMask = (static_cast<DWORD_PTR>(1) << bit);
+                break;
+            }
+            core_counter++;
+        }
+    }
+    if (!SetProcessAffinityMask(process, mpiAffinityMask)) {
+        if (rank == 0) cerr << "Warning: Failed to set process affinity mask for MPI rank.\n";
+    }
+
+    int N = 256;
     utils::PeriodicHamiltonian ham;
     ham.dimension = N;
     ham.H0.resize(N * N);
     ham.H1.resize(N * N);
 
-    // Генерация матриц гамильтониана
     if (rank == 0) {
         auto [H0_gen, H1_gen] = utils::generate_hermitian_pair(N, 1.0 , 1.0);
         ham.H0 = H0_gen;
@@ -59,7 +86,7 @@ int main(int argc, char** argv) {
     ham.omega = 2.0;
     ham.hbar = 1.0;
 
-    int total_steps = 24;
+    int total_steps = 360;
     auto problem = utils::prepare_evolution_problem(ham, 0.0, 1.0, total_steps);
     int order = 6;
 
@@ -73,7 +100,7 @@ int main(int argc, char** argv) {
         cout << "========================================\n";
     }
 
-    // 1. MPI Solver (1 процесс на 1 ядро, 1 поток для 1 процесса для чистоты сравнения)
+    // 1. MPI Solver (1 процесс на 1 ядро)
     omp_set_num_threads(1);
     mkl_set_num_threads(1);
 
@@ -86,20 +113,20 @@ int main(int argc, char** argv) {
 
     MPI_Finalize();
     if (rank != 0) {
-        return 0;
+        return 0; // Ранки 1-5 отдают ядра
     }
 
     cout << "MPI Solver (1 thread/proc) finished in " << mpi_duration << " seconds.\n";
 
-    // return access to all cores
-    if (!SetProcessAffinityMask(process, originalMask)) {
-        cerr << "Warning: Failed to restore process affinity mask.\n";
+    // Оставляем процессу все ядра
+    if (!SetProcessAffinityMask(process, systemAffinityMask)) {
+        cerr << "Warning: Failed to restore full system affinity mask.\n";
     }
 
     omp_set_num_threads(max_threads);
     mkl_set_num_threads(max_threads);
+    mkl_set_dynamic(0); // Запрещаем MKL срезать количество потоков, наверное лишнее
 
-    // 2. Single CPU Piecewise Magnus
     double start_time_single = omp_get_wtime();
     CMatrix U_single = piecewise_magnus_solver(
         problem.t_start, problem.t_final, problem.step_size(), N,
@@ -129,17 +156,18 @@ int main(int argc, char** argv) {
     double end_time_rk4 = omp_get_wtime();
     cout << "RK4 Solver (" << max_threads << " threads) finished in " << (end_time_rk4 - start_time_rk4) << " seconds.\n";
 
-
     // --- Сравнение результатов ---
     double err_mpi_single = matrix_ops::max_element_diff(U_mpi, U_single, N);
     double err_mpi_rk4    = matrix_ops::max_element_diff(U_mpi, U_rk4, N);
     double err_single_rk4 = matrix_ops::max_element_diff(U_single, U_rk4, N);
+    
     cout << fixed << setprecision(16);
     cout << "========================================\n";
     cout << "Diff(MPI vs Single): " << err_mpi_single << endl;
     cout << "Diff(MPI vs RK4):    " << err_mpi_rk4 << endl;
     cout << "Diff(Single vs RK4): " << err_single_rk4 << endl;
     cout << "========================================\n";
+    
     // Запись результатов в файл
     string report_path = utils::results_path("mpi_hpc_verification_report.txt");
     ofstream out(report_path);
@@ -148,14 +176,14 @@ int main(int argc, char** argv) {
     out << "Processes: " << size << " (Pinned)\nSteps: " << total_steps << "\n\n";
     
     out << "--- Timings ---\n";
-    out << "MPI Time (Pure, " << size << " procs): " << (end_time_mpi - start_time_mpi) << " s\n";
+    out << "MPI Time (Pure, " << size << " procs): " << mpi_duration << " s\n";
     out << "Single Time (MKL " << max_threads << " threads): " << (end_time_single - start_time_single) << " s\n";
     out << "RK4 Time (MKL " << max_threads << " threads):    " << (end_time_rk4 - start_time_rk4) << " s\n\n";
-    
     out << "--- Accuracy ---\n";
     out << "Max Diff MPI-Single: " << err_mpi_single << "\n";
     out << "Max Diff MPI-RK4:    " << err_mpi_rk4 << "\n";
     out.close();
+
     bool is_unitary_mpi = matrix_ops::is_unitary(U_mpi, N);
     bool is_unitary_rk4 = matrix_ops::is_unitary(U_rk4, N);
     cout << "Is MPI solution unitary? " << (is_unitary_mpi ? "YES" : "NO") << endl;
