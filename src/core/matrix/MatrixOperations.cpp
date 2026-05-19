@@ -18,14 +18,8 @@ namespace matrix_ops {
     }
 
     double mat_one_norm(const CMatrix& A, int N) {
-        std::vector<double> col_sums(N, 0.0);
-        for (int i = 0; i < N; ++i) {
-            for (int j = 0; j < N; ++j) {
-                // go through the row, incrementing the corresponding column counter
-                col_sums[j] += std::abs(A[utils::idx(i, j, N)]);
-            }
-        }
-        return *std::max_element(col_sums.begin(), col_sums.end());
+        // maximum column summ
+        return LAPACKE_zlange(LAPACK_ROW_MAJOR, '1', N, N, reinterpret_cast<const MKL_Complex16*>(A.data()), N);
     }
 
     void mat_add(const CMatrix& A, const CMatrix& B, CMatrix& C, int N) {
