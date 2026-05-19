@@ -1,4 +1,4 @@
-﻿#if 0
+﻿#if 1
 
 #include <iomanip>
 #include <chrono>
@@ -745,6 +745,8 @@ int main() {
 
 #endif
 
+#if 0
+
 #include "AllComputationalMethods.h"
 #include "Utils.h"
 #include <iostream>
@@ -764,7 +766,7 @@ int main() {
     double dt = 0.01;    // Шаг (10 сэмплов для ACC/Recursive)
     double eps0 = 0.5;
     double W = 2.0;
-    int num_runs = 1;    // Количество прогонов каждого метода
+    int num_runs = 3;    // Количество прогонов каждого метода
 
     cout << "Matrix size: " << N << "x" << N << endl;
     cout << "Number of runs per method: " << num_runs << endl;
@@ -797,22 +799,24 @@ int main() {
     // =======================================================
     // Тест 3: Recursive Magnus (например, 4 порядка)
     // =======================================================
-    // cout << "Running Recursive Magnus (Order 4)..." << endl;
-    // CMatrix Omega_Rec(N * N);
-    // for (int i = 0; i < num_runs; ++i) {
-    //     Omega_Rec = magnus_expansion(t0, t1, dt, N, H0, H_mod, eps0, W, 4);
-    // }
+    cout << "Running Recursive Magnus (Order 4)..." << endl;
+    CMatrix Omega_Rec(N * N);
+    for (int i = 0; i < num_runs; ++i) {
+        Omega_Rec = magnus_expansion(t0, t1, dt, N, H0, H_mod, eps0, W, 4);
+    }
 
     // =======================================================
     // Тест 4: Chebyshev Matrix Exponentiation
     // =======================================================
-    // cout << "Running Chebyshev Expm..." << endl;
-    // CMatrix U_Cheb(N * N);
-    // for (int i = 0; i < num_runs * 5; ++i) {
-    //     // Считаем экспоненту от Omega_ACC (M=15 членов ряда)
-    //     U_Cheb = expm_cheb(Omega_ACC, N, 15); 
-    // }
+    cout << "Running Chebyshev Expm..." << endl;
+    CMatrix U_Cheb(N * N);
+    for (int i = 0; i < num_runs * 5; ++i) {
+        // Считаем экспоненту от Omega_ACC (M=15 членов ряда)
+        U_Cheb = expm_cheb(Omega_ACC, N, 15); 
+    }
 
     cout << "\n=== Benchmark Finished Successfully ===" << endl;
     return 0;
 }
+
+#endif
