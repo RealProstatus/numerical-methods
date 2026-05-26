@@ -5,6 +5,8 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <mkl.h>
+#include <omp.h>
 #include "AllComputationalMethods.h"
 #include "RungeKutt.h"
 
@@ -19,10 +21,16 @@ using CMatrix = vector<complexd>;
 const double PI = 3.14159265358979323846;
 
 // Вводим константы для экспериментов
-const int N = 1024;             // Размерность системы
+const int N = 128;              // Размерность системы
 const int NUM_ITERS = 4;        // Количество итераций для усреднения времени (warm-up + bench)
 
 int main() {
+    mkl_set_dynamic(0);
+    omp_set_dynamic(0);
+
+    mkl_set_num_threads(6);
+    omp_set_num_threads(6);
+
     const double dt = 1e-5;
     const double T = 1.0;
     const double diag_min = 10.0;
@@ -761,6 +769,8 @@ int main() {
         std::cout << "Experiment 9 finished. Total time: " << time_ms_total << " ms\n";
         std::cout << "Results written to " << exp9_results_path << "\n";
     }
+
+}
 
 #endif
 
