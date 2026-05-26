@@ -88,7 +88,7 @@ int main() {
 
     // 1. Classic Magnus Expansion
     for (int k = 1; k <= 2; ++k) {
-        CMatrix Omega_calc;
+        CMatrix Omega_calc(N * N);
         auto start = chrono::high_resolution_clock::now();
         for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
             Omega_calc = magnus_classic(0.0, T_int, integration_dt, N, H0_test, Hmod_test, eps0, W, k);
@@ -104,7 +104,7 @@ int main() {
 
     // 2. ACC Expansion
     for (int k = 1; k <= 5; ++k) {
-        CMatrix Omega_calc;
+        CMatrix Omega_calc(N * N);
         auto start = chrono::high_resolution_clock::now();
         for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
             Omega_calc = magnus_ACC(A_samples, integration_dt, N, k);
@@ -120,7 +120,7 @@ int main() {
 
     // 3. Recursive Expansion
     for (int k = 1; k <= 8; ++k) {
-        CMatrix Omega_calc;
+        CMatrix Omega_calc(N * N);
         auto start = chrono::high_resolution_clock::now();
         for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
             Omega_calc = magnus_expansion(0.0, T_int, integration_dt, N, H0_test, Hmod_test, eps0, W, k);
@@ -136,7 +136,7 @@ int main() {
 
     // 4. Formula 3.14
     {
-        CMatrix Omega_314;
+        CMatrix Omega_314(N * N);
         auto start = chrono::high_resolution_clock::now();
         for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
             Omega_314 = magnus_3_14(0.0, T_int, integration_dt, N, H0_anti_herm, Hmod_anti_herm, eps0, W);
@@ -171,7 +171,7 @@ int main() {
         // 1. Taylor Expansion
         std::vector<int> taylor_terms = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30 };
         for (int terms : taylor_terms) {
-            CMatrix U_calc;
+            CMatrix U_calc(N * N);
             auto start = chrono::high_resolution_clock::now();
             for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
                 U_calc = matrix_ops::expm_taylor(Omega_ref_dt, N, terms);
@@ -188,7 +188,7 @@ int main() {
         // 2. Chebyshev Expansion
         std::vector<int> cheb_terms = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 25 };
         for (int M : cheb_terms) {
-            CMatrix U_calc;
+            CMatrix U_calc(N * N);
             auto start = chrono::high_resolution_clock::now();
             for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
                 U_calc = matrix_ops::expm_cheb(Omega_ref_dt, N, M);
@@ -204,7 +204,7 @@ int main() {
 
         // 3. Стандартный Pade
         {
-            CMatrix U_calc;
+            CMatrix U_calc(N * N);
             auto start = chrono::high_resolution_clock::now();
             for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
                 U_calc = matrix_ops::expm_pade_eigen(Omega_ref_dt, N);
@@ -218,6 +218,9 @@ int main() {
         std::cout << "Experiment 2 results written to experiment2_results.txt\n";
     }
 
+    // Эталонная матрица для Экспериментов 3, 3b и 7
+    CMatrix U_exact = utils::eye(N);
+
     // =====================================================================
     // EXPERIMENT 3: ODE Solving U'(t) = -iH(t)*U(t)
     // =====================================================================
@@ -229,11 +232,10 @@ int main() {
         // ГЕНЕРИРУЕМ ЭТАЛОН: Сверхточный РК4 (шаг 1e-6)
         double fine_rk_dt = 1e-6;
         int exact_steps = (int)std::round(T / fine_rk_dt);
-        CMatrix U_exact = utils::eye(N);
 
-        std::cout << "Computing Exact U(T) via fine RK4 (dt=1e-6). WARNING: For N=1024 this takes extreme amount of time!\n";
+        std::cout << "Computing Exact U(T) via fine RK4 (dt=1e-6)...\n";
         auto start_exact = chrono::high_resolution_clock::now();
-        // RK4 не усредняем в цикле (он и так экстремально долгий)
+        // RK4 не усредняем в цикле
         for (int step = 0; step < exact_steps; ++step) {
             U_exact = runge_kutta_simple::runge_kutta_step(step * fine_rk_dt, H0_test, Hmod_test, W, U_exact, fine_rk_dt, N);
         }
@@ -245,8 +247,8 @@ int main() {
             double rk_dt = 1e-4; // Обычный шаг
             int num_steps = (int)std::round(T / rk_dt);
 
-            auto start_rk = chrono::high_resolution_clock::now();
             CMatrix U_rk = utils::eye(N);
+            auto start_rk = chrono::high_resolution_clock::now();
             for (int step = 0; step < num_steps; ++step) {
                 U_rk = runge_kutta_simple::runge_kutta_step(step * rk_dt, H0_test, Hmod_test, W, U_rk, rk_dt, N);
             }
@@ -261,7 +263,7 @@ int main() {
         // Method 2: Piecewise Magnus ACC + Chebyshev
         {
             double macro_dt = 0.01;
-            CMatrix U_magnus;
+            CMatrix U_magnus(N * N);
             auto start_magnus = chrono::high_resolution_clock::now();
             for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
                 U_magnus = piecewise_magnus_solver(0.0, T, macro_dt, N, H0_test, Hmod_test, eps0, W, 4);
@@ -315,7 +317,7 @@ int main() {
 
             // Classic Magnus (k=2)
             {
-                CMatrix Omega_calc;
+                CMatrix Omega_calc(N * N);
                 auto start = chrono::high_resolution_clock::now();
                 for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
                     Omega_calc = magnus_classic(0.0, T_int, integration_dt, N, H_A, H_B, eps0, W, 2);
@@ -331,7 +333,7 @@ int main() {
 
             // ACC Magnus (k=5)
             {
-                CMatrix Omega_calc;
+                CMatrix Omega_calc(N * N);
                 auto start = chrono::high_resolution_clock::now();
                 for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
                     Omega_calc = magnus_ACC(A_samples_k, integration_dt, N, 5);
@@ -347,7 +349,7 @@ int main() {
 
             // Recursive Magnus (k=8)
             {
-                CMatrix Omega_calc;
+                CMatrix Omega_calc(N * N);
                 auto start = chrono::high_resolution_clock::now();
                 for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
                     Omega_calc = magnus_expansion(0.0, T_int, integration_dt, N, H_A, H_B, eps0, W, 8);
@@ -363,7 +365,7 @@ int main() {
 
             // Formula 3.14
             {
-                CMatrix Omega_calc;
+                CMatrix Omega_calc(N * N);
                 auto start = chrono::high_resolution_clock::now();
                 for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
                     Omega_calc = magnus_3_14(0.0, T_int, integration_dt, N, H_A_anti, H_B_anti, eps0, W);
@@ -414,7 +416,7 @@ int main() {
 
             // Taylor method (terms = 30)
             {
-                CMatrix U_calc;
+                CMatrix U_calc(N * N);
                 auto start = chrono::high_resolution_clock::now();
                 for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
                     U_calc = matrix_ops::expm_taylor(Omega_test, N, 30);
@@ -430,7 +432,7 @@ int main() {
 
             // Chebyshev method (M = 25)
             {
-                CMatrix U_calc;
+                CMatrix U_calc(N * N);
                 auto start = chrono::high_resolution_clock::now();
                 for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
                     U_calc = matrix_ops::expm_cheb(Omega_test, N, 25);
@@ -476,12 +478,12 @@ int main() {
             const CMatrix& H_A = spectral_matrices[mat_idx];
             const CMatrix& H_B = Hmod_spectral;
 
-            std::cout << "Computing Fine-Grid Reference U(T) for kappa " << kappa << " (WARNING: N=1024 -> very long time)...\n";
+            std::cout << "Computing Fine-Grid Reference U(T) for kappa " << kappa << "...\n";
 
             auto start_exact = chrono::high_resolution_clock::now();
-            CMatrix U_exact = utils::eye(N);
+            CMatrix U_exact_local = utils::eye(N);
             for (int step = 0; step < exact_steps; ++step) {
-                U_exact = runge_kutta_simple::runge_kutta_step(step * fine_rk_dt, H_A, H_B, W, U_exact, fine_rk_dt, N);
+                U_exact_local = runge_kutta_simple::runge_kutta_step(step * fine_rk_dt, H_A, H_B, W, U_exact_local, fine_rk_dt, N);
             }
             auto end_exact = chrono::high_resolution_clock::now();
             std::cout << "Done in " << chrono::duration_cast<chrono::microseconds>(end_exact - start_exact).count() / 1000.0 << " ms\n";
@@ -491,8 +493,8 @@ int main() {
                 double rk_dt = 1e-4;
                 int num_steps = (int)std::round(T / rk_dt);
 
-                auto start_rk = chrono::high_resolution_clock::now();
                 CMatrix U_rk = utils::eye(N);
+                auto start_rk = chrono::high_resolution_clock::now();
                 for (int step = 0; step < num_steps; ++step) {
                     U_rk = runge_kutta_simple::runge_kutta_step(step * rk_dt, H_A, H_B, W, U_rk, rk_dt, N);
                 }
@@ -500,15 +502,15 @@ int main() {
                 double time_rk_ms = chrono::duration_cast<chrono::microseconds>(end_rk - start_rk).count() / 1000.0; // RK не усредняем
 
                 CMatrix diff_rk(N * N, complexd(0.0, 0.0));
-                matrix_ops::mat_sub(U_rk, U_exact, diff_rk, N);
-                exp6_results << kappa << " | Runge-Kutta dt=1e-4 | " << matrix_ops::max_element_diff(U_rk, U_exact, N)
+                matrix_ops::mat_sub(U_rk, U_exact_local, diff_rk, N);
+                exp6_results << kappa << " | Runge-Kutta dt=1e-4 | " << matrix_ops::max_element_diff(U_rk, U_exact_local, N)
                     << " | " << matrix_ops::max_eigenvalue_modulus_hermitian(diff_rk, N) << " | " << time_rk_ms << "\n";
             }
 
             // Method 2: Piecewise Magnus ACC + Chebyshev
             {
                 double macro_dt = 0.01;
-                CMatrix U_magnus;
+                CMatrix U_magnus(N * N);
                 auto start_magnus = chrono::high_resolution_clock::now();
                 for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
                     U_magnus = piecewise_magnus_solver(0.0, T, macro_dt, N, H_A, H_B, eps0, W, 4);
@@ -517,10 +519,10 @@ int main() {
                 double time_magnus_ms = chrono::duration_cast<chrono::microseconds>(end_magnus - start_magnus).count() / 1000.0 / NUM_ITERS;
 
                 CMatrix diff_magnus(N * N, complexd(0.0, 0.0));
-                matrix_ops::mat_sub(U_magnus, U_exact, diff_magnus, N);
+                matrix_ops::mat_sub(U_magnus, U_exact_local, diff_magnus, N);
 
                 exp6_results << kappa << " | Piecewise Magnus ACC | "
-                    << matrix_ops::max_element_diff(U_magnus, U_exact, N) << " | "
+                    << matrix_ops::max_element_diff(U_magnus, U_exact_local, N) << " | "
                     << matrix_ops::max_eigenvalue_modulus_hermitian(diff_magnus, N) << " | "
                     << time_magnus_ms << "\n";
             }
@@ -544,7 +546,7 @@ int main() {
         exp7_results << "=================================================================\n";
         exp7_results << "EXPERIMENT 7: RK4 Accuracy vs Integration Step (dt)\n";
         exp7_results << "H(t) = H0 + Hmod * cos(W*t), N=" << N << ", T=" << T << "\n";
-        exp7_results << "Reference: Piecewise Magnus Solver (macro_dt=1e-3, order=4)\n";
+        exp7_results << "Reference: U_exact from Exp 3\n";
         exp7_results << "-----------------------------------------------------------------\n";
         exp7_results << "dt | Max Element Diff | Steps | Time (ms)\n";
         exp7_results << "-----------------------------------------------------------------\n";
@@ -621,7 +623,7 @@ int main() {
 
         while (current_macro_dt >= inner_dt) {
             int steps = (int)std::round(T / current_macro_dt);
-            CMatrix U_curr;
+            CMatrix U_curr(N * N);
 
             auto start = std::chrono::high_resolution_clock::now();
             for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
@@ -705,7 +707,7 @@ int main() {
             double time_ms_seg = 0.0;
             int final_halving_count = 0;
             double final_inner_dt = 0.0;
-            CMatrix final_U_local;
+            CMatrix final_U_local(N * N);
 
             std::cout << "Segment " << i + 1 << "/" << num_segments << " [" << t_start << ", " << t_end << "]:\n";
 
