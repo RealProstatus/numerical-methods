@@ -280,6 +280,53 @@ int main() {
     }
 
     // =====================================================================
+    // EXPERIMENT 3b: Work-Precision Diagram
+    // =====================================================================
+    {
+        std::ofstream exp3b_results(utils::results_path("experiment3b_work_precision.txt"));
+        exp3b_results << std::scientific << std::setprecision(12);
+        std::cout << "\nRunning Experiment 3b: Work-Precision Diagram (RK4 vs Magnus)...\n";
+        exp3b_results << "Method | Step | Error | Time(ms)\n";
+        exp3b_results << "------------------------------------------------\n";
+
+        // Прогоняем RK4 с разными шагами
+        std::vector<double> rk_steps = { 1e-2, 5e-3, 1e-3, 5e-4, 1e-4, 5e-5 };
+        for (double s_dt : rk_steps) {
+            int num_steps = (int)std::round(T / s_dt);
+            CMatrix U_rk = utils::eye(N);
+            
+            auto start = chrono::high_resolution_clock::now();
+            for (int step = 0; step < num_steps; ++step) {
+                U_rk = runge_kutta_simple::runge_kutta_step(step * s_dt, H0_test, Hmod_test, W, U_rk, s_dt, N);
+            }
+            auto end = chrono::high_resolution_clock::now();
+            double time_ms = chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0;
+
+            double err = matrix_ops::max_element_diff(U_rk, U_exact, N);
+            exp3b_results << "RK4 | " << s_dt << " | " << err << " | " << time_ms << "\n";
+        }
+
+        // Прогоняем Magnus с разными макро-шагами
+        std::vector<double> mag_steps = { 2e-1, 1e-1, 5e-2, 1e-2, 5e-3, 1e-3 };
+        for (double m_dt : mag_steps) {
+            CMatrix U_magnus(N * N);
+            
+            auto start = chrono::high_resolution_clock::now();
+            for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
+                U_magnus = piecewise_magnus_solver(0.0, T, m_dt, N, H0_test, Hmod_test, eps0, W, 4);
+            }
+            auto end = chrono::high_resolution_clock::now();
+            double time_ms = chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0 / NUM_ITERS;
+
+            double err = matrix_ops::max_element_diff(U_magnus, U_exact, N);
+            exp3b_results << "Magnus | " << m_dt << " | " << err << " | " << time_ms << "\n";
+        }
+        
+        exp3b_results.close();
+        std::cout << "Experiment 3b results written to experiment3b_work_precision.txt\n";
+    }
+
+    // =====================================================================
     // ============= EXPERIMENT 4: Omega Stability Analysis ===============
     // =====================================================================
     {
@@ -568,7 +615,7 @@ int main() {
         while (current_dt >= 1e-8) {
             int steps = (int)std::round(T / current_dt);
             CMatrix U_rk = utils::eye(N);
-
+            
             auto start = std::chrono::high_resolution_clock::now();
             for (int step = 0; step < steps; ++step) {
                 U_rk = runge_kutta_simple::runge_kutta_step(step * current_dt, H0_test, Hmod_test, W, U_rk, current_dt, N);
