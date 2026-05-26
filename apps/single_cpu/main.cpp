@@ -546,18 +546,18 @@ int main() {
         exp7_results << "=================================================================\n";
         exp7_results << "EXPERIMENT 7: RK4 Accuracy vs Integration Step (dt)\n";
         exp7_results << "H(t) = H0 + Hmod * cos(W*t), N=" << N << ", T=" << T << "\n";
-        exp7_results << "Reference: U_exact from Exp 3\n";
+        exp7_results << "Reference: Piecewise Magnus Solver (macro_dt=1e-3, order=4)\n";
         exp7_results << "-----------------------------------------------------------------\n";
         exp7_results << "dt | Max Element Diff | Steps | Time (ms)\n";
         exp7_results << "-----------------------------------------------------------------\n";
 
         double macro_dt = 1e-3;
         std::cout << "Computing reference U(T) using piecewise_magnus_solver (Fast)...\n";
-        CMatrix U_exact;
+        CMatrix U_exact_magnus(N * N);
         
         auto start_exact = std::chrono::high_resolution_clock::now();
         for (int _iter = 0; _iter < NUM_ITERS; ++_iter) {
-            U_exact = piecewise_magnus_solver(0.0, T, macro_dt, N, H0_test, Hmod_test, eps0, W, 4);
+            U_exact_magnus = piecewise_magnus_solver(0.0, T, macro_dt, N, H0_test, Hmod_test, eps0, W, 4);
         }
         auto end_exact = std::chrono::high_resolution_clock::now();
         std::cout << "Done in " << std::chrono::duration_cast<std::chrono::microseconds>(end_exact - start_exact).count() / 1000.0 / NUM_ITERS << " ms (Avg)\n\n";
@@ -576,7 +576,8 @@ int main() {
             auto end = std::chrono::high_resolution_clock::now();
             double time_ms = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
 
-            double current_error = matrix_ops::max_element_diff(U_rk, U_exact, N);
+            // Сравниваем результат РК4 с эталоном Магнуса
+            double current_error = matrix_ops::max_element_diff(U_rk, U_exact_magnus, N);
 
             exp7_results << current_dt << " | " << current_error << " | " << steps << " | " << time_ms << "\n";
             std::cout << "dt: " << std::setw(12) << current_dt << " | Error: " << current_error << "\n";
