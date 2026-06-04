@@ -3,52 +3,51 @@ import pandas as pd
 
 filepath = 'magnus_experiment_results.txt'
 
-# Чтение и парсинг данных
+# 1. Чтение и парсинг файла (с защитой от разорванных строк)
 data = []
 with open(filepath, 'r') as f:
-    for line in f:
-        # Игнорируем строки без разделителя или заголовки
-        if '|' in line and 'Method' not in line and '----' not in line:
-            parts = [p.strip() for p in line.split('|')]
-            if len(parts) >= 5 and parts[0] != '':
+    text = f.read()
+
+text = text.replace('|\n', '| ')
+
+for line in text.split('\n'):
+    if '|' in line and 'Method' not in line and '----' not in line:
+        parts = [p.strip() for p in line.split('|')]
+        if len(parts) >= 5 and parts[0] != '':
+            try:
                 method = parts[0]
                 k = int(parts[1])
                 err = float(parts[2])
                 time = float(parts[4])
                 data.append({'Method': method, 'K': k, 'Error': err, 'Time': time})
+            except ValueError:
+                continue
 
 df = pd.DataFrame(data)
 
-# Построение графика
-plt.figure(figsize=(10, 6))
+# 2. Создаем удобную подпись для оси X вида "ACC (k=1)"
+df['Label'] = df['Method'] + ' (k=' + df['K'].astype(str) + ')'
 
-methods = df['Method'].unique()
-colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-markers = ['o', 's', '^', 'D']
+# 3. Создаем фигуру с двумя графиками (один под другим)
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
 
-# Отрисовка точек для каждого метода
-for i, method in enumerate(methods):
-    subset = df[df['Method'] == method]
-    plt.scatter(subset['Time'], subset['Error'], 
-                label=method, s=100, alpha=0.8, edgecolors='k',
-                color=colors[i % len(colors)], marker=markers[i % len(markers)])
-    
-    # Добавление подписей порядка 'k' рядом с каждой точкой
-    for _, row in subset.iterrows():
-        plt.annotate(f"k={int(row['K'])}", (row['Time'], row['Error']), 
-                     xytext=(8, -3), textcoords='offset points', fontsize=9)
+# --- ВЕРХНИЙ ГРАФИК: Ошибка ---
+ax1.bar(df['Label'], df['Error'], color='#87CEFA', edgecolor='black')
+ax1.set_yscale('log')
+ax1.set_ylabel('Max Element Diff (Лог. шкала)')
+ax1.set_title('Ошибка вычисления матрицы (Меньше = Лучше)')
+ax1.grid(axis='y', ls='--', alpha=0.7)
 
-# Настройка осей и внешнего вида
-plt.xscale('log')
-plt.yscale('log')
-plt.xlabel('Время работы, Time (ms) [Лог. шкала]')
-plt.ylabel('Ошибка, Max Element Diff [Лог. шкала]')
-plt.title('Эксперимент 1: Соотношение Ошибки и Времени работы')
+# --- НИЖНИЙ ГРАФИК: Время работы ---
+ax2.bar(df['Label'], df['Time'], color='#F08080', edgecolor='black')
+ax2.set_yscale('log')
+ax2.set_ylabel('Время работы, ms (Лог. шкала)')
+ax2.set_title('Затраченное время (Меньше = Лучше)')
+ax2.grid(axis='y', ls='--', alpha=0.7)
 
-plt.grid(True, which="both", ls="--", alpha=0.3)
-plt.legend(title="Методы")
+# Наклоняем подписи по оси X, чтобы они не сливались
+ax2.set_xticklabels(df['Label'], rotation=45, ha='right')
+
 plt.tight_layout()
-
-# Сохранение и отображение
-plt.savefig('plot_exp1_scatter.png', dpi=300)
+plt.savefig('plot_exp1_bars.png', dpi=300)
 plt.show()
