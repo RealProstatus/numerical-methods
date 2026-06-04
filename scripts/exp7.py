@@ -15,10 +15,10 @@ with open(filepath, 'r') as f:
 plt.figure(figsize=(9, 6))
 plt.loglog(dts, errs, 'o-', color='crimson', label='Фактическая ошибка РК4')
 
-# Генерируем линию O(dt^4)
+# Генерируем линию O(dt^3)
 dts_np = np.array(dts)
-ref_err = (dts_np ** 4) * (errs[2] / (dts_np[2]**4)) * 0.1 # Смещение для красоты
-plt.loglog(dts_np, ref_err, 'k--', label='Теоретический наклон O(dt^4)')
+ref_err = (dts_np ** 3) * (errs[2] / (dts_np[2]**3)) * 0.1 # Смещение для красоты
+plt.loglog(dts_np, ref_err, 'k--', label='Теоретический наклон O(dt^3)')
 
 plt.gca().invert_xaxis() # Ось X в обратном порядке (уменьшение шага)
 plt.xlabel('Шаг интегрирования (dt)')

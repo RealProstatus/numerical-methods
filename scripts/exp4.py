@@ -64,7 +64,7 @@ def main():
                        linewidth=LINE_WIDTH, markersize=MARKER_SIZE, label=method)
     
     # Настройка верхнего графика (Формула 3.14)
-    ax1.set_title('Стабильность методов разложения Магнуса (Exp 4)')
+    ax1.set_title('Стабильность методов разложения Магнуса')
     ax1.set_ylabel('Ошибка (Max Element Diff)')
     ax1.legend(loc='lower left')
     ax1.grid(True, which="both", ls="--", alpha=0.5)

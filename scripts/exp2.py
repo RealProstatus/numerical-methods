@@ -59,7 +59,7 @@ def main():
     plt.semilogy(cheb_terms, cheb_err, marker='s', linestyle='-', color=COLOR_CHEBYSHEV, 
                  linewidth=LINE_WIDTH, markersize=MARKER_SIZE, label='Полиномы Чебышева')
     
-    plt.title('Сходимость методов вычисления матричной экспоненты (Exp 2)')
+    plt.title('Сходимость методов вычисления матричной экспоненты')
     plt.xlabel('Количество членов ряда (K / M)')
     plt.ylabel('Погрешность вычисления $e^{\\Omega}$')
     plt.legend()
