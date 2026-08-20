@@ -12,11 +12,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
-    message(FATAL_ERROR
-        "This project requires the Intel oneAPI C++ compiler. "
-        "Run CMake from an Intel oneAPI environment and configure with icx/icx-cl.")
-endif()
+#if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
+#    message(FATAL_ERROR
+#        "This project requires the Intel oneAPI C++ compiler. "
+#        "Run CMake from an Intel oneAPI environment and configure with icx/icx-cl.")
+#endif()
 
 include(cmake/Dependencies.cmake)
 
@@ -33,7 +33,7 @@ endif()
 if(BUILD_SINGLE_GPU)
     enable_language(CUDA)
     find_package(CUDAToolkit REQUIRED)
-    message(FATAL_ERROR "single_gpu is reserved, but CUDA implementation sources are not added yet.")
+    add_subdirectory(apps/single_gpu) 
 endif()
 
 if(BUILD_MULTI_CPU)

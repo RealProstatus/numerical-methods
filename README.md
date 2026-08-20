@@ -7,7 +7,7 @@
 | Конфигурация | CMake-опция | Статус |
 |---|---:|---|
 | Один CPU-узел | `BUILD_SINGLE_CPU` | Реализовано и собирается |
-| Один GPU-узел | `BUILD_SINGLE_GPU` | Папка и опция зарезервированы |
+| Один GPU-узел | `BUILD_SINGLE_GPU` | Реализовано (CUDA) и собирается |
 | Несколько CPU-узлов | `BUILD_MULTI_CPU` | Папка и опция зарезервированы |
 | Несколько GPU-узлов | `BUILD_MULTI_GPU` | Папка и опция зарезервированы |
 
@@ -15,6 +15,7 @@
 
 ```text
 single_cpu
+single_gpu_app
 ```
 
 Основные static libraries:
@@ -39,6 +40,9 @@ numerical-methods/
     single_cpu/
       CMakeLists.txt             # CMake target для executable single_cpu
       main.cpp                   # main с экспериментами (пока что)
+    single_gpu/
+      CMakeLists.txt             # CMake target для executable single_gpu_app
+      gpu_verification.cu        # CUDA-точка входа и бенчмарк
 
   scripts/                       # Вспомогательные скрипты
   src/
@@ -46,7 +50,7 @@ numerical-methods/
 
     core/
       include/
-      matrix/                    # Базовая линейная алгебра, MKL BLAS/LAPACK wrappers
+      matrix/                    # Базовая линейная алгебра, MKL BLAS/LAPACK wrappers, cuBLAS
       utils/                     # Генерация матриц, вывод, сохранение
       magnus/                    # Реализации метода Магнуса
       expm/                      # Методы экспонирования матриц
@@ -54,7 +58,7 @@ numerical-methods/
 
     solvers/
       single_cpu/                # Текущий one-CPU solver
-      single_gpu/                # Зарезервировано под CUDA solver на одном GPU-узле
+      single_gpu/                # CUDA solver на одном GPU-узле (MagnusChebyshevGPU)
       multi_cpu/                 # Зарезервировано под MPI solver на CPU-кластере
       multi_gpu/                 # Зарезервировано под MPI + CUDA solver
 
@@ -92,6 +96,10 @@ Static library для one-CPU solver layer.
 
 Executable target, который собирает текущий `main.cpp` и позволяет запускать существующие эксперименты.
 
+### `single_gpu_app`
+
+Executable target, который собирает бенчмарк CUDA-реализации и сравнивает её с эталонным CPU-решением.
+
 ## Зависимости
 
 Обязательные:
@@ -101,11 +109,11 @@ Executable target, который собирает текущий `main.cpp` и 
 - Intel oneMKL с `MKLConfig.cmake`;
 - Eigen submodule;
 - Visual Studio 2022 на Windows.
+- CUDA Toolkit (для сборки GPU таргетов).
 
 Будущие:
 
 - Intel MPI;
-- CUDA Toolkit;
 - GoogleTest.
 
 ## Подготовка Submodules
@@ -169,6 +177,28 @@ cmake --build build\single_cpu --config RelWithDebInfo --target single_cpu
 
 ```bat
 build\single_cpu\apps\single_cpu\Release\single_cpu.exe
+```
+
+## Сборка GPU-версии на Windows (CUDA)
+
+Важно: Для компиляции CUDA-кода (BUILD_SINGLE_GPU) под Windows необходимо использовать стандартный компилятор MSVC, а не Intel C++ Compiler, чтобы избежать конфликтов системных библиотек.
+
+### Конфигурация (без флага -T):
+
+```bat
+cmake -S . -B build\single_gpu -G "Visual Studio 17 2022" -A x64 -DBUILD_SINGLE_GPU=ON -DBUILD_SINGLE_CPU=OFF -DBUILD_MULTI_CPU=OFF -DBUILD_MULTI_GPU=OFF -DBUILD_TESTS=OFF
+```
+
+### Сборка:
+
+```bat
+cmake --build build\single_gpu --config Release
+```
+
+### Запуск
+
+```bat
+build\single_gpu\apps\single_gpu\Release\single_gpu_app.exe
 ```
 
 ## Альтернативная Ручная Сборка На Windows Через NMake
@@ -246,7 +276,7 @@ cmake --build build/single_cpu_linux --target single_cpu
 | Опция | По умолчанию | Назначение |
 |---|---:|---|
 | `BUILD_SINGLE_CPU` | `ON` | Собрать текущий рабочий `single_cpu` executable |
-| `BUILD_SINGLE_GPU` | `OFF` | Зарезервировано под CUDA target |
+| `BUILD_SINGLE_GPU` | `OFF` | Собрать CUDA executable (single_gpu_app) |
 | `BUILD_MULTI_CPU` | `OFF` | Зарезервировано под Intel MPI CPU target |
 | `BUILD_MULTI_GPU` | `OFF` | Зарезервировано под Intel MPI + CUDA target |
 | `BUILD_TESTS` | `OFF` | Включить будущие GoogleTest tests |
@@ -278,18 +308,11 @@ export OMP_NUM_THREADS=1
 Папки уже есть:
 
 ```text
-src/solvers/single_gpu
 src/solvers/multi_cpu
 src/solvers/multi_gpu
 ```
 
 Если включить одну из опций:
-
-```bat
-cmake -S . -B build\single_gpu -DBUILD_SINGLE_GPU=ON
-```
-
-или:
 
 ```bat
 cmake -S . -B build\multi_cpu -DBUILD_MULTI_CPU=ON
