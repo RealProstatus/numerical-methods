@@ -9,7 +9,6 @@ set(CORE_INCLUDE_DIRS
 )
 
 add_library(computational_methods STATIC
-    core/matrix/MatrixOperations.cpp
     core/matrix/MatrixOperations.h
     core/utils/Utils.cpp
     core/utils/Utils.h
@@ -32,6 +31,18 @@ add_library(computational_methods STATIC
     core/integrators/RungeKutt.h
     core/include/AllComputationalMethods.h
 )
+
+if(BUILD_SINGLE_GPU)
+    find_package(CUDAToolkit REQUIRED)
+    
+    target_sources(computational_methods PRIVATE core/matrix/MatrixOperations.cu)
+    target_link_libraries(computational_methods PUBLIC CUDA::cublas)
+    
+    # Задаем архитектуру Ada Lovelace (8.9) для компиляции ядер под RTX 4060
+    set_target_properties(computational_methods PROPERTIES CUDA_ARCHITECTURES 89)
+else()
+    target_sources(computational_methods PRIVATE core/matrix/MatrixOperations.cpp)
+endif()
 
 target_include_directories(computational_methods PUBLIC ${CORE_INCLUDE_DIRS})
 target_link_libraries(computational_methods PUBLIC project_options mkl_dependency eigen_dependency)
@@ -59,8 +70,6 @@ if(BUILD_MULTI_CPU)
         "${CMAKE_CURRENT_SOURCE_DIR}/solvers/multi_cpu"
     )
 
-    # computational_methods и one_cpu_solver — транзитивные зависимости:
-    # предоставляют include-пути к core-заголовкам и PiecewiseMagnus.h
     target_link_libraries(multi_cpu_solver PUBLIC
         computational_methods
         one_cpu_solver
