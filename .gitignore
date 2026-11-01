@@ -427,3 +427,11 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Python C-Extensions and build artifacts
+*.pyd
+*.so
+*.dylib
+*.egg-info/
+.scikit-build/
+dist/
