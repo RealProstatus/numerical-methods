@@ -6,23 +6,23 @@
 
 | Конфигурация / Модуль | Опция сборки | Статус |
 |---|:---:|---|
-| Один CPU-узел (CLI) | `BUILD_SINGLE_CPU` | Реализовано и собирается[cite: 14] |
-| Один GPU-узел (CUDA CLI) | `BUILD_SINGLE_GPU` | Реализовано (CUDA + cuBLAS) и собирается[cite: 14] |
-| Несколько CPU-узлов (MPI CLI) | `BUILD_MULTI_CPU` | Реализовано (декомпозиция по времени + дерево редукции)[cite: 2, 14] |
-| Несколько GPU-узлов | `BUILD_MULTI_GPU` | Зарезервировано[cite: 14] |
-| **Python-модуль и плагины (QuTiP 5 / SciPy / Qiskit)** | `BUILD_PYTHON_BINDINGS` | **Реализовано (`pymagnus-hpc` через `nanobind`)**[cite: 2] |
+| Один CPU-узел (CLI) | `BUILD_SINGLE_CPU` | Реализовано и собирается |
+| Один GPU-узел (CUDA CLI) | `BUILD_SINGLE_GPU` | Реализовано (CUDA + cuBLAS) и собирается |
+| Несколько CPU-узлов (MPI CLI) | `BUILD_MULTI_CPU` | Реализовано (декомпозиция по времени + дерево редукции) |
+| Несколько GPU-узлов | `BUILD_MULTI_GPU` | Зарезервировано |
+| **Python-модуль и плагины (QuTiP 5 / SciPy / Qiskit)** | `BUILD_PYTHON_BINDINGS` | **Реализовано (`pymagnus-hpc` через `nanobind`)** |
 
-Основные исполняемые цели (Executables)[cite: 14]:
-* `single_cpu`[cite: 14]
-* `single_gpu_app`[cite: 14]
-* `mpi_verification`[cite: 14]
+Основные исполняемые цели (Executables):
+* `single_cpu`
+* `single_gpu_app`
+* `mpi_verification`
 
-Основные библиотеки (Libraries)[cite: 14]:
-* `computational_methods` (MKL/CUDA ядро матричных операций, экспонент и коммутаторов)[cite: 14]
-* `one_cpu_solver` (солверы для одного CPU-узла)[cite: 14]
-* `multi_cpu_solver` (MPI-солвер для кластеров)[cite: 14]
-* `magnus_bridge` (C++ фасад и адаптер для вызова численного ядра из Python)[cite: 2]
-* `_magnus_py` (nanobind расширение Python)[cite: 2]
+Основные библиотеки (Libraries):
+* `computational_methods` (MKL/CUDA ядро матричных операций, экспонент и коммутаторов)
+* `one_cpu_solver` (солверы для одного CPU-узла)
+* `multi_cpu_solver` (MPI-солвер для кластеров)
+* `magnus_bridge` (C++ фасад и адаптер для вызова численного ядра из Python)
+* `_magnus_py` (nanobind расширение Python)
 
 ---
 
@@ -90,11 +90,11 @@ numerical-methods/
 
 ## Интеграция с Python и QuTiP 5
 
-Пакет `pymagnus-hpc` предоставляет бесшовный доступ к C++/MKL солверам напрямую из Python без промежуточного копирования матриц в памяти (Zero-Copy через buffer protocol и DLPack) и с автоматическим освобождением GIL[cite: 2].
+Пакет `pymagnus-hpc` предоставляет бесшовный доступ к C++/MKL солверам напрямую из Python без промежуточного копирования матриц в памяти (Zero-Copy через buffer protocol и DLPack) и с автоматическим освобождением GIL.
 
 ### 1. Установка пакета
 
-В активированном окружении Intel oneAPI[cite: 14]:
+В активированном окружении Intel oneAPI:
 
 ```bat
 # Установка сборочных зависимостей
@@ -112,7 +112,7 @@ pip install -e . --no-build-isolation --config-settings=cmake.args="-DBUILD_SING
 
 ### 2. Использование через интерфейс QuTiP 5 (`sesolve` / `propagator`)
 
-При импорте `pymagnus_hpc` интегратор `"magnus_chebyshev"` автоматически регистрируется в реестре `qutip.SESolver`[cite: 2]:
+При импорте `pymagnus_hpc` интегратор `"magnus_chebyshev"` автоматически регистрируется в реестре `qutip.SESolver`:
 
 ```python
 import numpy as np
@@ -354,12 +354,12 @@ cmake --build build/single_cpu_linux --target single_cpu
 
 | Опция | По умолчанию | Назначение |
 |---|:---:|---|
-| `BUILD_SINGLE_CPU` | `ON` | Сборка одноузлового CPU исполняемого файла (`single_cpu`)[cite: 14] |
-| `BUILD_SINGLE_GPU` | `OFF` | Сборка CUDA исполняемого файла (`single_gpu_app`)[cite: 14] |
-| `BUILD_MULTI_CPU` | `OFF` | Сборка многоузлового MPI приложения (`mpi_verification`)[cite: 14] |
-| `BUILD_MULTI_GPU` | `OFF` | Резерв под распределенную GPU-систему (MPI + CUDA)[cite: 14] |
-| `BUILD_PYTHON_BINDINGS` | `ON` | Сборка C++ расширения `_magnus_py` для Python[cite: 2] |
-| `BUILD_TESTS` | `OFF` | Сборка модульных тестов GoogleTest[cite: 14] |
+| `BUILD_SINGLE_CPU` | `ON` | Сборка одноузлового CPU исполняемого файла (`single_cpu`) |
+| `BUILD_SINGLE_GPU` | `OFF` | Сборка CUDA исполняемого файла (`single_gpu_app`) |
+| `BUILD_MULTI_CPU` | `OFF` | Сборка многоузлового MPI приложения (`mpi_verification`) |
+| `BUILD_MULTI_GPU` | `OFF` | Резерв под распределенную GPU-систему (MPI + CUDA) |
+| `BUILD_PYTHON_BINDINGS` | `ON` | Сборка C++ расширения `_magnus_py` для Python |
+| `BUILD_TESTS` | `OFF` | Сборка модульных тестов GoogleTest |
 
 ---
 
