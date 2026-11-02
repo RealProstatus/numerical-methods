@@ -19,11 +19,6 @@
 #include "solvers/multi_cpu/MpiMagnusChebyshev.h"
 #endif
 
-#if defined(MAGNUS_HAS_CUDA)
-#include <cuda_runtime.h>
-#include "solvers/single_gpu/CudaMagnusChebyshev.cuh"
-#endif
-
 namespace magnus {
 
     namespace {
@@ -125,16 +120,6 @@ namespace magnus {
         }
 
     } // namespace
-
-    bool has_cuda_backend() noexcept {
-#if defined(MAGNUS_HAS_CUDA)
-        int device_count = 0;
-        cudaError_t err = cudaGetDeviceCount(&device_count);
-        return (err == cudaSuccess && device_count > 0);
-#else
-        return false;
-#endif
-    }
 
     bool has_mpi_backend() noexcept {
 #if defined(MAGNUS_HAS_MPI)
@@ -258,50 +243,34 @@ namespace magnus {
         std::memcpy(U_out_ptr, U_res.data(), total_elems * sizeof(Complex));
     }
 
+} // namespace magnus
+
+// ============================================================================
+// Заглушка для сборки БЕЗ флага BUILD_SINGLE_GPU
+// При BUILD_SINGLE_GPU=ON функции реализованы в magnus_bridge_cuda.cu
+// ============================================================================
+#if !defined(MAGNUS_HAS_CUDA)
+namespace magnus {
+
+    bool has_cuda_backend() noexcept {
+        return false;
+    }
+
     void propagate_cuda_raw(
-        std::size_t dim,
-        const Complex* d_H0_ptr,
-        const Complex* d_H1_ptr,
-        double t_start,
-        double t_final,
-        int steps,
-        double epsilon,
-        double omega,
-        const SolverOptions& opts,
-        Complex* d_U_out_ptr,
-        bool pointers_on_device
+        std::size_t /*dim*/,
+        const Complex* /*d_H0_ptr*/,
+        const Complex* /*d_H1_ptr*/,
+        double /*t_start*/,
+        double /*t_final*/,
+        int /*steps*/,
+        double /*epsilon*/,
+        double /*omega*/,
+        const SolverOptions& /*opts*/,
+        Complex* /*d_U_out_ptr*/,
+        bool /*pointers_on_device*/
     ) {
-#if defined(MAGNUS_HAS_CUDA)
-        const int N = static_cast<int>(dim);
-        const std::size_t total_elems = dim * dim;
-        const std::size_t bytes = total_elems * sizeof(Complex);
-
-        CMatrix h_H0(total_elems);
-        CMatrix h_H1(total_elems);
-
-        if (pointers_on_device) {
-            cudaMemcpy(h_H0.data(), d_H0_ptr, bytes, cudaMemcpyDeviceToHost);
-            cudaMemcpy(h_H1.data(), d_H1_ptr, bytes, cudaMemcpyDeviceToHost);
-        }
-        else {
-            std::memcpy(h_H0.data(), d_H0_ptr, bytes);
-            std::memcpy(h_H1.data(), d_H1_ptr, bytes);
-        }
-
-        cuda_optimized::MagnusChebyshevGPU gpu_solver(N, h_H0, h_H1);
-        CMatrix h_U = gpu_solver.solve(t_start, t_final, steps, epsilon, omega, opts.chebyshev_degree);
-
-        if (pointers_on_device) {
-            cudaMemcpy(d_U_out_ptr, h_U.data(), bytes, cudaMemcpyHostToDevice);
-        }
-        else {
-            std::memcpy(d_U_out_ptr, h_U.data(), bytes);
-        }
-#else
-        (void)dim; (void)d_H0_ptr; (void)d_H1_ptr; (void)t_start; (void)t_final;
-        (void)steps; (void)epsilon; (void)omega; (void)opts; (void)d_U_out_ptr; (void)pointers_on_device;
-        throw std::runtime_error("pymagnus_hpc was compiled without CUDA support.");
-#endif
+        throw std::runtime_error("CUDA backend is not available. Recompile with BUILD_SINGLE_GPU=ON.");
     }
 
 } // namespace magnus
+#endif

@@ -1,37 +1,48 @@
 import os
 import sys
+import glob
 
-# На Windows регистрируем пути к DLL Intel oneMKL и компилятора Intel OpenMP
+# Удержание дескрипторов DLL в памяти для предотвращения их сборки сборщиком мусора
+_dll_directories = []
+
 if sys.platform == "win32":
-    # 1. Поиск путей через переменные окружения или стандартную установку oneAPI
-    mkl_root = os.environ.get("MKLROOT", r"C:\Program Files (x86)\Intel\oneAPI\mkl\latest")
-    mkl_bin = os.path.join(mkl_root, "bin")
-    if os.path.isdir(mkl_bin):
-        os.add_dll_directory(mkl_bin)
-
-    oneapi_root = os.environ.get("ONEAPI_ROOT", r"C:\Program Files (x86)\Intel\oneAPI")
-    compiler_candidates = [
-        os.path.join(oneapi_root, "compiler", "latest", "bin"),
-        os.path.join(oneapi_root, "compiler", "latest", "bin", "intel64"),
-        os.path.join(oneapi_root, "compiler", "latest", "windows", "bin"),
-        os.path.join(oneapi_root, "compiler", "latest", "windows", "redist", "intel64_win", "compiler"),
+    # 1. Пути к Intel oneMKL и Intel OpenMP
+    mkl_candidates = [
+        r"C:\Program Files (x86)\Intel\oneAPI\mkl\latest\bin",
+        r"C:\Program Files (x86)\Intel\oneAPI\mkl\2025.0\bin",
+        r"C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin",
+        r"C:\Program Files (x86)\Intel\oneAPI\compiler\latest\lib",
+        r"C:\Program Files (x86)\Intel\oneAPI\compiler\latest\windows\redist\intel64_win\compiler",
+        r"C:\Program Files (x86)\Intel\oneAPI\compiler\2025.0\bin",
+        r"C:\Program Files (x86)\Intel\oneAPI\compiler\2025.0\windows\redist\intel64_win\compiler",
     ]
-    for c_bin in compiler_candidates:
-        if os.path.isdir(c_bin):
+    for path in mkl_candidates:
+        if os.path.isdir(path):
             try:
-                os.add_dll_directory(c_bin)
+                _dll_directories.append(os.add_dll_directory(path))
+                os.environ["PATH"] = path + os.pathsep + os.environ["PATH"]
             except OSError:
                 pass
 
-    # 2. Дополнительно регистрируем все папки Intel из PATH, настроенные setvars.bat
-    for path_dir in os.environ.get("PATH", "").split(os.pathsep):
-        if os.path.isdir(path_dir) and any(sub in path_dir.lower() for sub in ("mkl", "oneapi", "compiler")):
+    # 2. Пути к NVIDIA CUDA Toolkit (включая подкаталоги bin\x64 для CUDA 13+)
+    cuda_candidates = []
+    cuda_path_env = os.environ.get("CUDA_PATH")
+    if cuda_path_env:
+        cuda_candidates.append(os.path.join(cuda_path_env, "bin"))
+        cuda_candidates.append(os.path.join(cuda_path_env, "bin", "x64"))
+
+    cuda_candidates.extend(glob.glob(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\*\bin"))
+    cuda_candidates.extend(glob.glob(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\*\bin\x64"))
+
+    for path in cuda_candidates:
+        if os.path.isdir(path):
             try:
-                os.add_dll_directory(path_dir)
+                _dll_directories.append(os.add_dll_directory(path))
+                os.environ["PATH"] = path + os.pathsep + os.environ["PATH"]
             except OSError:
                 pass
 
-# Теперь импорт скомпилированного C++ модуля пройдет успешно
+# Импорт скомпилированного расширения
 from ._magnus_py import (
     BackendType,
     ExpmMethod,

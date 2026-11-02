@@ -34,16 +34,11 @@ add_library(computational_methods STATIC
     core/include/AllComputationalMethods.h
 )
 
+target_sources(computational_methods PRIVATE core/matrix/MatrixOperations.cpp)
+
 if(BUILD_SINGLE_GPU)
     find_package(CUDAToolkit REQUIRED)
-    
-    target_sources(computational_methods PRIVATE core/matrix/MatrixOperations.cu)
     target_link_libraries(computational_methods PUBLIC CUDA::cublas)
-    
-    # Архитектура Ada Lovelace (8.9) для RTX 4060
-    set_target_properties(computational_methods PROPERTIES CUDA_ARCHITECTURES 89)
-else()
-    target_sources(computational_methods PRIVATE core/matrix/MatrixOperations.cpp)
 endif()
 
 target_include_directories(computational_methods PUBLIC ${CORE_INCLUDE_DIRS})
