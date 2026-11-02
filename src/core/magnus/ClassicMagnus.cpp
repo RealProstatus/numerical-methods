@@ -1,4 +1,5 @@
 #include "ClassicMagnus.h"
+#include "FlopCounter.h"
 
 using namespace std;
 using namespace matrix_ops;
@@ -8,13 +9,18 @@ CMatrix trapezoidal_integral(const vector<CMatrix>& samples, double dt, int N) {
     int n_samples = samples.size();
 
     if (n_samples < 2) return result;
+    const size_t n2 = result.size();
 
     // First and last samples with weight 0.5
+    profiling::FlopCounter::add(4ULL * n2);
     for (size_t k = 0; k < result.size(); ++k) {
         result[k] = (samples[0][k] + samples[n_samples - 1][k]) * 0.5;
     }
 
     // Middle samples with weight 1.0
+    if (n_samples > 2) {
+        profiling::FlopCounter::add(static_cast<uint64_t>(n_samples - 2) * 2ULL * n2);
+    }
     for (int i = 1; i < n_samples - 1; ++i) {
         for (size_t k = 0; k < result.size(); ++k) {
             result[k] += samples[i][k];
@@ -38,15 +44,20 @@ CMatrix simpson_integral(const vector<CMatrix>& samples, double dt, int N) {
     // Simpson's rule requires an even number of intervals (odd number of points).
     // If the number of points is even, handle the last interval with trapezoids.
     int limit = (n_samples % 2 == 1) ? n_samples : n_samples - 1;
+    const size_t n2 = result.size();
 
     // Formula: (h/3) * (f0 + 4f1 + 2f2 + 4f3 + ... + fn)
 
     // Endpoints (weight 1)
+    profiling::FlopCounter::add(2ULL * n2);
     for (size_t k = 0; k < result.size(); ++k) {
         result[k] = samples[0][k] + samples[limit - 1][k];
     }
 
     // Interior points
+    if (limit > 2) {
+        profiling::FlopCounter::add(static_cast<uint64_t>(limit - 2) * 4ULL * n2);
+    }
     for (int i = 1; i < limit - 1; ++i) {
         double w = (i % 2 == 1) ? 4.0 : 2.0; // alternating weights: 4, 2, 4, 2...
         for (size_t k = 0; k < result.size(); ++k) {
@@ -59,6 +70,7 @@ CMatrix simpson_integral(const vector<CMatrix>& samples, double dt, int N) {
 
     // If there is one leftover interval at the end (even number of samples)
     if (n_samples % 2 == 0) {
+        profiling::FlopCounter::add(6ULL * n2);
         // Add the area of the last interval using trapezoids
         for (size_t k = 0; k < result.size(); ++k) {
             complexd trap_area = (samples[n_samples - 2][k] + samples[n_samples - 1][k]) * 0.5 * dt;
@@ -132,6 +144,9 @@ vector<CMatrix> generate_samples(double t0, double t1, double dt, int N,
     double eps0, double W) {
     vector<CMatrix> samples;
     int n_steps = (int)std::round((t1 - t0) / dt) + 1;
+
+    const size_t n2 = static_cast<size_t>(N) * N;
+    profiling::FlopCounter::add(static_cast<uint64_t>(n_steps) * 10ULL * n2);
 
     for (int i = 0; i < n_steps; ++i) {
         double t = t0 + i * dt;

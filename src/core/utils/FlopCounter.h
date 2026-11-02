@@ -6,6 +6,7 @@
 namespace profiling
 {
 
+// Just DTO
 struct FlopStats
 {
     uint64_t  flop_cnt{};

@@ -1,4 +1,5 @@
 ﻿#include "MatrixOperations.h"
+#include "FlopCounter.h"
 
 #include <mkl.h>
 #include <mkl_lapacke.h>
@@ -10,6 +11,10 @@ namespace matrix_ops {
     // 1. Basic matrix operations
     void matmul(const CMatrix& A, const CMatrix& B, CMatrix& C, int N,
         complexd alpha, complexd beta) {
+        const bool non_unit_alpha = (alpha != complexd(1.0, 0.0));
+        const bool non_zero_beta  = (beta != complexd(0.0, 0.0));
+        profiling::FlopCounter::add_zgemm(N, non_unit_alpha, non_zero_beta);
+
         cblas_zgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
             N, N, N, &alpha,
             (const void*)A.data(), N,
@@ -18,11 +23,13 @@ namespace matrix_ops {
     }
 
     double mat_one_norm(const CMatrix& A, int N) {
+        profiling::FlopCounter::add_zlange(N);
         // maximum column summ
         return LAPACKE_zlange(LAPACK_ROW_MAJOR, '1', N, N, reinterpret_cast<const MKL_Complex16*>(A.data()), N);
     }
 
     void mat_add(const CMatrix& A, const CMatrix& B, CMatrix& C, int N) {
+        profiling::FlopCounter::add_zadd(static_cast<size_t>(N) * N);
         vzAdd(N * N, 
               reinterpret_cast<const MKL_Complex16*>(A.data()), 
               reinterpret_cast<const MKL_Complex16*>(B.data()), 
@@ -30,6 +37,7 @@ namespace matrix_ops {
     }
 
     void mat_sub(const CMatrix& A, const CMatrix& B, CMatrix& C, int N) {
+        profiling::FlopCounter::add_zadd(static_cast<size_t>(N) * N);
         vzSub(N * N, 
               reinterpret_cast<const MKL_Complex16*>(A.data()), 
               reinterpret_cast<const MKL_Complex16*>(B.data()), 
@@ -38,10 +46,12 @@ namespace matrix_ops {
 
     void mat_axpy(const CMatrix& X, CMatrix& Y, int N, complexd alpha) {
         const MKL_INT n = static_cast<MKL_INT>((size_t)N * N);
+        profiling::FlopCounter::add_zaxpy(static_cast<size_t>(n));
         cblas_zaxpy(n, &alpha, X.data(), 1, Y.data(), 1);
     }
 
     void mat_scale_inplace(CMatrix& A, int N, complexd alpha) {
+        profiling::FlopCounter::add_zscal(static_cast<size_t>(N) * N, true);
         cblas_zscal(N * N, &alpha, A.data(), 1);
     }
 
@@ -51,6 +61,7 @@ namespace matrix_ops {
 
     CMatrix mat_scale(const CMatrix& A, complexd alpha) {
         CMatrix result = A;
+        profiling::FlopCounter::add_zscal(result.size(), true);
         cblas_zscal(result.size(), &alpha, result.data(), 1);
         return result;
     }
@@ -74,10 +85,12 @@ namespace matrix_ops {
         complexd minus_alpha(-1.0, 0.0);
 
         // 1. result = A * B
+        profiling::FlopCounter::add_zgemm(N, false, false);
         cblas_zgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
             N, N, N, &alpha, A.data(), N, B.data(), N, &zero, result.data(), N);
 
         // 2. result = -1.0 * B * A + 1.0 * result
+        profiling::FlopCounter::add_zgemm(N, true, true);
         cblas_zgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
             N, N, N, &minus_alpha, B.data(), N, A.data(), N, &alpha, result.data(), N);
     }
