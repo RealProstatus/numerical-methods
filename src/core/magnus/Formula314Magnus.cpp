@@ -1,4 +1,5 @@
 #include "Formula314Magnus.h"
+#include "FlopCounter.h"
 #include "ClassicMagnus.h"
 #include <mkl.h>
 
@@ -13,10 +14,12 @@ namespace
         complexd one = complexd(1.0, 0.0);
 
         // Result = alpha * A * B + 1.0 * Result
+        profiling::FlopCounter::add_zgemm(N, true, true);
         cblas_zgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
                     N, N, N, &alpha, A.data(), N, B.data(), N, &one, Result.data(), N);
 
         // Result = (-alpha) * B * A + 1.0 * Result
+        profiling::FlopCounter::add_zgemm(N, true, true);
         cblas_zgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
                     N, N, N, &minus_alpha, B.data(), N, A.data(), N, &one, Result.data(), N);
     }
