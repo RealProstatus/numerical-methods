@@ -4,6 +4,7 @@
 #include <vector>
 #include "Utils.h"
 #include "MatrixOperations.h"
+#include "FlopCounter.h"
 
 using namespace std;
 using namespace utils;
@@ -78,6 +79,8 @@ namespace runge_kutta_simple {
             U_new[i] = U[i] + k_sum[i] * complexd(dt / 6.0, 0.0);
         }
 
+        // 3 вызова get_H_t (3*4*N^2) + 4 умн. на -i (4*6*N^2) + temp1..3, k_sum, U_new (26*N^2) = 62*N^2 FLOPs
+        profiling::FlopCounter::add(62ULL * static_cast<uint64_t>(N) * N);
         return U_new;
     }
 }

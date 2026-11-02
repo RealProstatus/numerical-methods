@@ -28,9 +28,7 @@ namespace matrix_ops {
             double factorial = 1.0;
             for (int i = 1; i <= n; ++i) factorial *= i;
 
-            for (size_t k = 0; k < res.size(); ++k) {
-                res[k] += term[k] / factorial;
-            }
+            mat_axpy(term, res, N, complexd(1.0 / factorial, 0.0));
         }
 
         // 5. Square s times: result = (e^{A/2^s})^(2^s)
