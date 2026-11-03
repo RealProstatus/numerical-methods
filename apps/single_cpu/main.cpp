@@ -1,4 +1,4 @@
-﻿#if 1
+﻿#if 0
 
 #include <iomanip>
 #include <chrono>
@@ -895,6 +895,352 @@ int main() {
     }
 
     cout << "\n=== Benchmark Finished Successfully ===" << endl;
+    return 0;
+}
+
+#endif
+
+#if 1
+
+#include <iostream>
+#include <fstream>
+#include <iomanip>
+#include <vector>
+#include <string>
+#include <functional>
+#include <chrono>
+#include <limits>
+#include <mkl.h>
+#include <omp.h>
+#include <clocale>
+
+#include "AllComputationalMethods.h"
+#include "RungeKutt.h"
+#include "FlopCounter.h"
+
+using namespace std;
+using namespace utils;
+using namespace matrix_ops;
+using namespace runge_kutta_simple;
+
+namespace {
+
+    constexpr double PI = 3.14159265358979323846;
+
+    // Параметры эксперимента
+    constexpr int N = 128;            // Размерность матриц N x N
+    constexpr int NUM_ITERS = 4;      // Число прогонов для усреднения времени
+    constexpr double H_STEP = 1e-2;   // Величина одного шага интегрирования h
+    constexpr double EPS0 = 1.0;      // Амплитуда модуляции f(t) = eps0 * cos(W * t)
+    constexpr double W = 2.0 * PI;    // Частота модуляции
+
+    // Описание одной тестовой задачи (постоянной пары матриц H0, Hmod)
+    struct BenchmarkProblem {
+        string name;
+        CMatrix H0;
+        CMatrix Hmod;
+        CMatrix H0_anti;   // -i * H0 (для magnus_3_14)
+        CMatrix Hmod_anti; // -i * Hmod (для magnus_3_14)
+        CMatrix Omega_ref; // Эталон матрицы Омега на шаге H_STEP
+        CMatrix U_ref;     // Эталон пропагатора U(H_STEP) = exp(Omega_ref)
+    };
+
+    // Результат одного конкретного прогона (на одной матрице)
+    struct SingleRunRecord {
+        string method_name;
+        int param = 0;
+        string problem_name;
+        double error = 0.0;
+        uint64_t flops = 0;
+        double time_ms = 0.0;
+        bool is_worst = false;
+
+        double gflops_per_sec() const {
+            return (time_ms > 0.0) ? (static_cast<double>(flops) * 1e-6 / time_ms) : 0.0;
+        }
+    };
+
+    // Прогон метода по всем 3 матрицам:
+    // сохраняет ВСЕ 3 прогона в CSV, а в консоль выводит и возвращает только худший по точности
+    SingleRunRecord evaluate_method_on_all_problems(
+        const string& method_name,
+        int param,
+        const vector<BenchmarkProblem>& problems,
+        bool compare_with_omega,
+        ofstream& csv,
+        const function<CMatrix(const BenchmarkProblem&)>& runner)
+    {
+        vector<SingleRunRecord> runs;
+        runs.reserve(problems.size());
+
+        size_t worst_idx = 0;
+        double max_err = -1.0;
+
+        for (size_t i = 0; i < problems.size(); ++i) {
+            const auto& prob = problems[i];
+            CMatrix calc_mat;
+            uint64_t single_run_flops = 0;
+            double total_time_ms = 0.0;
+
+            for (int iter = 0; iter < NUM_ITERS; ++iter) {
+                profiling::FlopScope scope;
+                calc_mat = runner(prob);
+                if (iter == 0) {
+                    single_run_flops = scope.flops(); // Точное число FLOPs за 1 вызов
+                }
+                total_time_ms += scope.elapsed_ms();
+            }
+
+            const double avg_time_ms = total_time_ms / NUM_ITERS;
+            const CMatrix& ref_mat = compare_with_omega ? prob.Omega_ref : prob.U_ref;
+            const double err = matrix_ops::max_element_diff(calc_mat, ref_mat, N);
+
+            SingleRunRecord rec;
+            rec.method_name  = method_name;
+            rec.param        = param;
+            rec.problem_name = prob.name;
+            rec.error        = err;
+            rec.flops        = single_run_flops;
+            rec.time_ms      = avg_time_ms;
+            rec.is_worst     = false;
+
+            if (err > max_err) {
+                max_err = err;
+                worst_idx = i;
+            }
+
+            runs.push_back(rec);
+        }
+
+        // Помечаем прогон с худшей точностью
+        runs[worst_idx].is_worst = true;
+
+        // Записываем ВСЕ прогоны (по всем 3 матрицам) в CSV-файл
+        for (const auto& rec : runs) {
+            csv << rec.method_name << ","
+                << rec.param << ","
+                << rec.problem_name << ","
+                << scientific << setprecision(12) << rec.error << ","
+                << rec.flops << ","
+                << rec.time_ms << ","
+                << rec.gflops_per_sec() << ","
+                << (rec.is_worst ? 1 : 0) << "\n";
+        }
+
+        // В консоль выводим ТОЛЬКО худший случай
+        const auto& worst = runs[worst_idx];
+        cout << left << setw(24) << worst.method_name
+             << setw(10) << worst.param
+             << scientific << setprecision(4) << setw(18) << worst.error
+             << defaultfloat << setw(16) << worst.flops
+             << fixed << setprecision(3) << setw(14) << worst.time_ms
+             << fixed << setprecision(2) << setw(12) << worst.gflops_per_sec()
+             << worst.problem_name << "\n";
+
+        return worst;
+    }
+
+    void print_table_header(const string& title, const string& param_col) {
+        cout << "\n========================================================================================================\n";
+        cout << " " << title << " (Console shows WORST-CASE only)\n";
+        cout << "========================================================================================================\n";
+        cout << left << setw(24) << "Method"
+             << setw(10) << param_col
+             << setw(18) << "Worst Error"
+             << setw(16) << "FLOPs"
+             << setw(14) << "Time (ms)"
+             << setw(12) << "GFLOP/s"
+             << "Worst Matrix\n";
+        cout << "--------------------------------------------------------------------------------------------------------\n";
+    }
+
+    void print_fastest_method(const vector<SingleRunRecord>& worst_results, double target_tol, const string& stage_name) {
+        const SingleRunRecord* best_by_flops = nullptr;
+        for (const auto& r : worst_results) {
+            if (r.error <= target_tol) {
+                if (!best_by_flops || r.flops < best_by_flops->flops) {
+                    best_by_flops = &r;
+                }
+            }
+        }
+
+        cout << "--------------------------------------------------------------------------------------------------------\n";
+        if (best_by_flops) {
+            cout << "[RESULT - " << stage_name << "] Leader in terms of minimum FLOPs (for accuracy <= "
+                 << scientific << setprecision(1) << target_tol << "): "
+                 << best_by_flops->method_name << " (param=" << best_by_flops->param << ")"
+                 << " -> " << best_by_flops->flops << " FLOPs, Worst Error = "
+                 << scientific << setprecision(3) << best_by_flops->error
+                 << ", Time = " << fixed << setprecision(3) << best_by_flops->time_ms << " ms"
+                 << " (on " << best_by_flops->problem_name << ")\n";
+        } else {
+            cout << "[RESULT - " << stage_name << "] None of the methods reached the threshold. " << target_tol << "\n";
+        }
+    }
+
+} // namespace
+
+int main() {
+    std::setlocale(LC_ALL, "Russian");
+
+    mkl_set_dynamic(0);
+    omp_set_dynamic(0);
+    mkl_set_num_threads(6);
+    omp_set_num_threads(6);
+
+    cout << "========================================================================================================\n";
+    cout << " EXPERIMENT: Accuracy vs FLOPs across 3 Constant Matrix Problems (N = " << N << ", h = " << H_STEP << ")\n";
+    cout << "========================================================================================================\n";
+
+    // -------------------------------------------------------------------------
+    // 1. Генерация 3 тестовых задач (постоянных матриц с разными свойствами)
+    // -------------------------------------------------------------------------
+    vector<BenchmarkProblem> problems(3);
+
+    // Задача 1: Хорошо обусловленная спектральная матрица (kappa = 10)
+    {
+        auto [H0_spec10, V10, D10] = utils::generate_spectral_matrix(N, 10.0, 10.0);
+        problems[0].name = "1_WellCond_Kappa10";
+        problems[0].H0   = H0_spec10;
+        problems[0].Hmod = utils::generate_hermitian_matrix(N, 2.0);
+    }
+
+    // Задача 2: Пара матриц с усиленной некоммутативностью ([H0, Hmod] велик)
+    {
+        auto [H_ddA, H_ddB] = utils::generate_hermitian_pair_dd(N, 1.0, 1.0, 8.0, 30.0);
+        problems[1].name = "2_HighNonComm_DD";
+        problems[1].H0   = H_ddA;
+        problems[1].Hmod = H_ddB;
+    }
+
+    // Задача 3: Жесткая спектральная матрица (kappa = 10000)
+    {
+        auto [H0_spec10k, V10k, D10k] = utils::generate_spectral_matrix(N, 10000.0, 50.0);
+        problems[2].name = "3_Stiff_Kappa10000";
+        problems[2].H0   = H0_spec10k;
+        problems[2].Hmod = utils::generate_hermitian_matrix(N, 5.0);
+    }
+
+    // Вычисление эталонов Omega_ref и U_ref (FlopCounter здесь отключен: enabled_ == false)
+    const double ref_dt = H_STEP * 1e-3;
+    for (auto& prob : problems) {
+        cout << "Preparing reference Omega_ref and U_ref for [" << prob.name << "]...\n";
+        prob.H0_anti   = matrix_ops::mat_scale(prob.H0, complexd(0.0, -1.0));
+        prob.Hmod_anti = matrix_ops::mat_scale(prob.Hmod, complexd(0.0, -1.0));
+        prob.Omega_ref = magnus_expansion(0.0, H_STEP, ref_dt, N, prob.H0, prob.Hmod, EPS0, W, 10);
+        prob.U_ref     = matrix_ops::expm_pade_eigen(prob.Omega_ref, N);
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. ЧАСТЬ 1: Точность и FLOPs при вычислении матрицы Омега
+    // -------------------------------------------------------------------------
+    const string omega_csv_path = utils::results_path("experiment_flops_omega.csv");
+    ofstream omega_csv(omega_csv_path);
+    omega_csv << "Method,Param,Problem,Error,FLOPs,Time_ms,GFLOPS_s,Is_Worst\n";
+
+    print_table_header("PART 1: Omega Calculation (Error vs FLOPs)", "Order K");
+
+    vector<SingleRunRecord> omega_worst_results;
+    const double inner_dt = H_STEP / 6.0; // 7 узлов на шаге H_STEP
+
+    // 2.1. Classic Magnus (k = 1, 2, 3)
+    for (int k : {1, 2, 3}) {
+        auto worst = evaluate_method_on_all_problems("Classic", k, problems, true, omega_csv, [&](const BenchmarkProblem& p) {
+            return magnus_classic(0.0, H_STEP, inner_dt, N, p.H0, p.Hmod, EPS0, W, k);
+        });
+        omega_worst_results.push_back(worst);
+    }
+
+    // 2.2. ACC Magnus (k = 1, 2, 5, 6)
+    for (int k : {1, 2, 5, 6}) {
+        auto worst = evaluate_method_on_all_problems("ACC", k, problems, true, omega_csv, [&](const BenchmarkProblem& p) {
+            double sub_dt = (k >= 6) ? (H_STEP / 6.0) : ((k >= 5) ? (H_STEP / 4.0) : (H_STEP / 2.0));
+            auto samples = generate_samples(0.0, H_STEP, sub_dt, N, p.H0, p.Hmod, EPS0, W);
+            return magnus_ACC(samples, sub_dt, N, k);
+        });
+        omega_worst_results.push_back(worst);
+    }
+
+    // 2.3. Recursive Magnus (k = 1..6)
+    for (int k : {1, 2, 3, 4, 5, 6}) {
+        auto worst = evaluate_method_on_all_problems("Recursive", k, problems, true, omega_csv, [&](const BenchmarkProblem& p) {
+            return magnus_expansion(0.0, H_STEP, inner_dt, N, p.H0, p.Hmod, EPS0, W, k);
+        });
+        omega_worst_results.push_back(worst);
+    }
+
+    // 2.4. Formula 3.14 (magnus_3_14)
+    {
+        auto worst = evaluate_method_on_all_problems("Formula314", 4, problems, true, omega_csv, [&](const BenchmarkProblem& p) {
+            return magnus_3_14(0.0, H_STEP, inner_dt, N, p.H0_anti, p.Hmod_anti, EPS0, W);
+        });
+        omega_worst_results.push_back(worst);
+    }
+
+    omega_csv.close();
+    print_fastest_method(omega_worst_results, 1e-9, "Omega calculation");
+
+    // -------------------------------------------------------------------------
+    // 3. ЧАСТЬ 2: Точность и FLOPs выполнения всего шага (Омега + Экспонента)
+    // -------------------------------------------------------------------------
+    const string step_csv_path = utils::results_path("experiment_flops_step.csv");
+    ofstream step_csv(step_csv_path);
+    step_csv << "Method,Param,Problem,Error,FLOPs,Time_ms,GFLOPS_s,Is_Worst\n";
+
+    print_table_header("PART 2: Full Step Execution Omega + Chebyshev / RK4 (Error vs FLOPs)", "Param");
+
+    vector<SingleRunRecord> step_worst_results;
+    const vector<int> cheb_orders = { 2, 4, 6, 8, 10, 12, 15, 20 };
+
+    // 3.1. ACC (4-й порядок) + Chebyshev(M)
+    for (int M : cheb_orders) {
+        auto worst = evaluate_method_on_all_problems("ACC4+Chebyshev", M, problems, false, step_csv, [&](const BenchmarkProblem& p) {
+            double sub_dt = H_STEP / 2.0;
+            auto samples = generate_samples(0.0, H_STEP, sub_dt, N, p.H0, p.Hmod, EPS0, W);
+            CMatrix Om = magnus_ACC(samples, sub_dt, N, 4);
+            return matrix_ops::expm_cheb(Om, N, M);
+        });
+        step_worst_results.push_back(worst);
+    }
+
+    // 3.2. Formula 3.14 + Chebyshev(M)
+    for (int M : cheb_orders) {
+        auto worst = evaluate_method_on_all_problems("Formula314+Chebyshev", M, problems, false, step_csv, [&](const BenchmarkProblem& p) {
+            CMatrix Om = magnus_3_14(0.0, H_STEP, inner_dt, N, p.H0_anti, p.Hmod_anti, EPS0, W);
+            return matrix_ops::expm_cheb(Om, N, M);
+        });
+        step_worst_results.push_back(worst);
+    }
+
+    // 3.3. Recursive Magnus (k=4) + Chebyshev(M)
+    for (int M : cheb_orders) {
+        auto worst = evaluate_method_on_all_problems("Recursive4+Chebyshev", M, problems, false, step_csv, [&](const BenchmarkProblem& p) {
+            CMatrix Om = magnus_expansion(0.0, H_STEP, inner_dt, N, p.H0, p.Hmod, EPS0, W, 4);
+            return matrix_ops::expm_cheb(Om, N, M);
+        });
+        step_worst_results.push_back(worst);
+    }
+
+    // 3.4. Runge-Kutta 4 (дробление шага H_STEP на substeps подшагов)
+    for (int substeps : {1, 2, 4, 8, 16, 32, 64}) {
+        auto worst = evaluate_method_on_all_problems("RK4_Substeps", substeps, problems, false, step_csv, [&](const BenchmarkProblem& p) {
+            CMatrix U = utils::eye(N);
+            double dt_rk = H_STEP / substeps;
+            for (int s = 0; s < substeps; ++s) {
+                U = runge_kutta_simple::runge_kutta_step(s * dt_rk, p.H0, p.Hmod, W, U, dt_rk, N);
+            }
+            return U;
+        });
+        step_worst_results.push_back(worst);
+    }
+
+    step_csv.close();
+    print_fastest_method(step_worst_results, 1e-9, "full step U(h)");
+
+    cout << "\nAll runs (across all 3 matrices) saved to CSV files:\n"
+         << "  1) " << omega_csv_path << "\n"
+         << "  2) " << step_csv_path << "\n";
+
     return 0;
 }
 
