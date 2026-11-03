@@ -930,7 +930,7 @@ namespace {
     // Параметры эксперимента
     constexpr int N = 128;            // Размерность матриц N x N
     constexpr int NUM_ITERS = 4;      // Число прогонов для усреднения времени
-    constexpr double H_STEP = 1e-2;   // Величина одного шага интегрирования h
+    constexpr double H_STEP = 1e-3;   // Величина одного шага интегрирования h
     constexpr double EPS0 = 1.0;      // Амплитуда модуляции f(t) = eps0 * cos(W * t)
     constexpr double W = 2.0 * PI;    // Частота модуляции
 
