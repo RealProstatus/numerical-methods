@@ -4,72 +4,151 @@
 
 ## Статус Реализаций
 
-| Конфигурация | CMake-опция | Статус |
-|---|---:|---|
-| Один CPU-узел | `BUILD_SINGLE_CPU` | Реализовано и собирается |
-| Один GPU-узел | `BUILD_SINGLE_GPU` | Реализовано (CUDA) и собирается |
-| Несколько CPU-узлов | `BUILD_MULTI_CPU` | Папка и опция зарезервированы |
-| Несколько GPU-узлов | `BUILD_MULTI_GPU` | Папка и опция зарезервированы |
+| Конфигурация / Модуль | Опция сборки | Статус |
+|---|:---:|---|
+| Один CPU-узел (CLI) | `BUILD_SINGLE_CPU` | Реализовано и собирается |
+| Один GPU-узел (CUDA CLI) | `BUILD_SINGLE_GPU` | Реализовано (CUDA + cuBLAS) и собирается |
+| Несколько CPU-узлов (MPI CLI) | `BUILD_MULTI_CPU` | Реализовано (декомпозиция по времени + дерево редукции) |
+| Несколько GPU-узлов | `BUILD_MULTI_GPU` | Зарезервировано |
+| **Python-модуль и плагины (QuTiP 5 / SciPy / Qiskit)** | `BUILD_PYTHON_BINDINGS` | **Реализовано (`pymagnus-hpc` через `nanobind`)** |
 
-Сейчас рабочий executable target:
+Основные исполняемые цели (Executables):
+* `single_cpu`
+* `single_gpu_app`
+* `mpi_verification`
 
-```text
-single_cpu
-single_gpu_app
-```
+Основные библиотеки (Libraries):
+* `computational_methods` (MKL/CUDA ядро матричных операций, экспонент и коммутаторов)
+* `one_cpu_solver` (солверы для одного CPU-узла)
+* `multi_cpu_solver` (MPI-солвер для кластеров)
+* `magnus_bridge` (C++ фасад и адаптер для вызова численного ядра из Python)
+* `_magnus_py` (nanobind расширение Python)
 
-Основные static libraries:
-
-```text
-computational_methods
-one_cpu_solver
-```
+---
 
 ## Структура Проекта
 
 ```text
 numerical-methods/
-  CMakeLists.txt
+  CMakeLists.txt                 # Корневой CMake (сборка CLI и Python-модуля)
+  pyproject.toml                 # Сборка wheel-пакета pymagnus-hpc через scikit-build-core
   README.md
   .gitignore
 
   cmake/
-    Dependencies.cmake
+    Dependencies.cmake           # Поиск MKL, Eigen, OpenMP
 
-  apps/
-    single_cpu/
-      CMakeLists.txt             # CMake target для executable single_cpu
-      main.cpp                   # main с экспериментами (пока что)
-    single_gpu/
-      CMakeLists.txt             # CMake target для executable single_gpu_app
-      gpu_verification.cu        # CUDA-точка входа и бенчмарк
+  include/
+    magnus/
+      solvers.hpp                # Чистый C++20 фасад (типы, опции, сигнатуры вызовов)
 
-  scripts/                       # Вспомогательные скрипты
   src/
-    CMakeLists.txt               # Сборка статических lib с численными методами
+    CMakeLists.txt               # Сборка статических библиотек ядра и моста
 
     core/
       include/
-      matrix/                    # Базовая линейная алгебра, MKL BLAS/LAPACK wrappers, cuBLAS
-      utils/                     # Генерация матриц, вывод, сохранение
-      magnus/                    # Реализации метода Магнуса
-      expm/                      # Методы экспонирования матриц
-      integrators/               # Reference-методы
+      matrix/                    # MKL BLAS/LAPACK обертки (cblas_zgemm, нормы, коммутаторы)
+      utils/                     # Генераторы матриц, сетки, ProblemSetup
+      magnus/                    # Разложения Магнуса (Classic, Acc, Formula314, Recursive)
+      expm/                      # Вычисление exp(A) (Chebyshev, PadeEigen, Taylor)
+      integrators/               # Опорные интеграторы (RungeKutt)
 
     solvers/
-      single_cpu/                # Текущий one-CPU solver
-      single_gpu/                # CUDA solver на одном GPU-узле (MagnusChebyshevGPU)
-      multi_cpu/                 # Зарезервировано под MPI solver на CPU-кластере
-      multi_gpu/                 # Зарезервировано под MPI + CUDA solver
+      single_cpu/                # PiecewiseMagnus и Formula314ChebyshevSolver
+      single_gpu/                # CudaMagnusChebyshev (MagnusChebyshevGPU)
+      multi_cpu/                 # MpiMagnusChebyshev (декомпозиция по времени)
+      multi_gpu/                 # Зарезервировано
 
-  tests/                         # Зарезервировано под GoogleTest tests
+    python_bridge/
+      magnus_bridge.cpp          # Адаптер вызовов MKL/CUDA/MPI ядер к фасаду
+      magnus_bridge_cuda.cu      # GPU-мост вызова CUDA-солвера
 
-  results/                       # Выходные файлы экспериментов
+  python/
+    bindings/
+      module.cpp                 # Биндинги nanobind (_magnus_py, zero-copy, release GIL)
+    pymagnus_hpc/
+      __init__.py                # Регистрация DLL Intel MKL/OpenMP и плагинов
+      solver.py                  # Высокоуровневый API (solve_magnus, expm_magnus)
+      qutip_plugin.py            # Интегратор MagnusChebyshevIntegrator для QuTiP 5
+      scipy_plugin.py            # Подкласс OdeSolver для scipy.integrate.solve_ivp
+      qiskit_plugin.py           # Метод решения для qiskit_dynamics.solve_lmde
 
+  apps/
+    single_cpu/                  # CLI эксперименты для одного CPU
+    single_gpu/                  # CLI бенчмарк и верификация CUDA
+    multi_cpu/                   # CLI запуск MPI-редукции
+
+  scripts/                       # Скрипты построения графиков и запуска серий тестов
+  tests/                         # Тестовый набор
+  results/                       # Выходные данные экспериментов
   3rdparty/
-    eigen/                       # Eigen submodule, header-only dependency
-    googletest/                  # Будущий GoogleTest submodule, пока может отсутствовать
+    eigen/                       # Шаблоны Eigen (submodule)
+    googletest/                  # GoogleTest (submodule)
 ```
+
+---
+
+## Интеграция с Python и QuTiP 5
+
+Пакет `pymagnus-hpc` предоставляет бесшовный доступ к C++/MKL солверам напрямую из Python без промежуточного копирования матриц в памяти (Zero-Copy через buffer protocol и DLPack) и с автоматическим освобождением GIL.
+
+### 1. Установка пакета
+
+В активированном окружении Intel oneAPI:
+
+```bat
+# Установка сборочных зависимостей
+pip install nanobind scikit-build-core qutip
+
+# Установка пакета в режиме разработки
+pip install -e . --no-build-isolation
+```
+
+Для сборки с поддержкой CUDA GPU (RTX 4060):
+
+```bat
+pip install -e . --no-build-isolation --config-settings=cmake.args="-DBUILD_SINGLE_GPU=ON"
+```
+
+### 2. Использование через интерфейс QuTiP 5 (`sesolve` / `propagator`)
+
+При импорте `pymagnus_hpc` интегратор `"magnus_chebyshev"` автоматически регистрируется в реестре `qutip.SESolver`:
+
+```python
+import numpy as np
+import qutip as qt
+import pymagnus_hpc  # Регистрация MagnusChebyshevIntegrator в QuTiP 5
+
+# Гамильтониан двухуровневой системы: H(t) = 0.5*omega0*sigma_z + eps*cos(omega*t)*sigma_x
+omega0, eps, omega = 2.0 * np.pi, 0.2, 2.0 * np.pi
+H0 = 0.5 * omega0 * qt.sigmaz()
+H1 = qt.sigmax()
+
+H_evo = [H0, [H1, lambda t: eps * np.cos(omega * t)]]
+psi0 = qt.basis(2, 0)
+tlist = np.linspace(0.0, 1.0, 51)
+
+# Вызов C++/MKL/CUDA солвера Магнуса 6-го порядка через штатный интерфейс QuTiP
+result = qt.sesolve(
+    H_evo,
+    psi0,
+    tlist,
+    options={
+        "method": "magnus_chebyshev",
+        "magnus_method": "Formula314_6",   # 'Classic2', 'Acc4', 'Acc6', 'Formula314_6'
+        "expm_method": "Chebyshev",        # 'Chebyshev', 'PadeEigen', 'Taylor'
+        "chebyshev_degree": 16,
+        "dt": 0.01,
+        "is_harmonic": True,
+        "epsilon": eps,
+        "omega": omega,
+    },
+)
+
+print("Финальное состояние:", result.states[-1])
+```
+
+---
 
 ## CMake Targets
 
@@ -274,12 +353,15 @@ cmake --build build/single_cpu_linux --target single_cpu
 ## CMake Опции
 
 | Опция | По умолчанию | Назначение |
-|---|---:|---|
-| `BUILD_SINGLE_CPU` | `ON` | Собрать текущий рабочий `single_cpu` executable |
-| `BUILD_SINGLE_GPU` | `OFF` | Собрать CUDA executable (single_gpu_app) |
-| `BUILD_MULTI_CPU` | `OFF` | Зарезервировано под Intel MPI CPU target |
-| `BUILD_MULTI_GPU` | `OFF` | Зарезервировано под Intel MPI + CUDA target |
-| `BUILD_TESTS` | `OFF` | Включить будущие GoogleTest tests |
+|---|:---:|---|
+| `BUILD_SINGLE_CPU` | `ON` | Сборка одноузлового CPU исполняемого файла (`single_cpu`) |
+| `BUILD_SINGLE_GPU` | `OFF` | Сборка CUDA исполняемого файла (`single_gpu_app`) |
+| `BUILD_MULTI_CPU` | `OFF` | Сборка многоузлового MPI приложения (`mpi_verification`) |
+| `BUILD_MULTI_GPU` | `OFF` | Резерв под распределенную GPU-систему (MPI + CUDA) |
+| `BUILD_PYTHON_BINDINGS` | `ON` | Сборка C++ расширения `_magnus_py` для Python |
+| `BUILD_TESTS` | `OFF` | Сборка модульных тестов GoogleTest |
+
+---
 
 ## Управление Потоками MKL
 
@@ -300,22 +382,3 @@ export MKL_NUM_THREADS=1
 export OMP_NUM_THREADS=1
 ./build/single_cpu_linux/apps/single_cpu/single_cpu
 ```
-
-## Будущие GPU И MPI Targets
-
-Пока эти targets не реализованы.
-
-Папки уже есть:
-
-```text
-src/solvers/multi_cpu
-src/solvers/multi_gpu
-```
-
-Если включить одну из опций:
-
-```bat
-cmake -S . -B build\multi_cpu -DBUILD_MULTI_CPU=ON
-```
-
-CMake остановится с сообщением, что исходники соответствующей реализации ещё не добавлены. Это ожидаемое поведение

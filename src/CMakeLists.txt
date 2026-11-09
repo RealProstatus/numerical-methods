@@ -8,6 +8,8 @@ set(CORE_INCLUDE_DIRS
     "${CMAKE_CURRENT_SOURCE_DIR}/solvers/single_cpu"
 )
 
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 add_library(computational_methods STATIC
     core/matrix/MatrixOperations.h
     core/utils/Utils.cpp
@@ -32,16 +34,11 @@ add_library(computational_methods STATIC
     core/include/AllComputationalMethods.h
 )
 
+target_sources(computational_methods PRIVATE core/matrix/MatrixOperations.cpp)
+
 if(BUILD_SINGLE_GPU)
     find_package(CUDAToolkit REQUIRED)
-    
-    target_sources(computational_methods PRIVATE core/matrix/MatrixOperations.cu)
     target_link_libraries(computational_methods PUBLIC CUDA::cublas)
-    
-    # Задаем архитектуру Ada Lovelace (8.9) для компиляции ядер под RTX 4060
-    set_target_properties(computational_methods PROPERTIES CUDA_ARCHITECTURES 89)
-else()
-    target_sources(computational_methods PRIVATE core/matrix/MatrixOperations.cpp)
 endif()
 
 target_include_directories(computational_methods PUBLIC ${CORE_INCLUDE_DIRS})
@@ -75,4 +72,37 @@ if(BUILD_MULTI_CPU)
         one_cpu_solver
         MPI::MPI_CXX
     )
+endif()
+
+# ==============================================================================
+# Таргет моста для Python
+# ==============================================================================
+add_library(magnus_bridge STATIC
+    python_bridge/magnus_bridge.cpp
+)
+
+target_include_directories(magnus_bridge PUBLIC
+    "${CMAKE_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    ${CORE_INCLUDE_DIRS}
+    "${CMAKE_CURRENT_SOURCE_DIR}/solvers/single_cpu"
+)
+
+target_link_libraries(magnus_bridge PUBLIC
+    computational_methods
+    one_cpu_solver
+)
+
+if(BUILD_SINGLE_GPU)
+    target_sources(magnus_bridge PRIVATE python_bridge/magnus_bridge_cuda.cu)
+    target_include_directories(magnus_bridge PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/solvers/single_gpu")
+    target_link_libraries(magnus_bridge PUBLIC CUDA::cublas)
+    target_compile_definitions(magnus_bridge PUBLIC MAGNUS_HAS_CUDA=1)
+    set_target_properties(magnus_bridge PROPERTIES CUDA_ARCHITECTURES 89)
+endif()
+
+if(BUILD_MULTI_CPU)
+    target_include_directories(magnus_bridge PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/solvers/multi_cpu")
+    target_link_libraries(magnus_bridge PUBLIC multi_cpu_solver)
+    target_compile_definitions(magnus_bridge PUBLIC MAGNUS_HAS_MPI=1)
 endif()
