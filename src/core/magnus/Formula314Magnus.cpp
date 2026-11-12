@@ -60,7 +60,7 @@ namespace matrix_ops {
         double h5 = h * h * h * h * h;
         double h7 = h5 * h * h;
 
-        double c_Hmod  = h * (f_t1 + (h * h / 24.0) * f2_half) + (h5 / 240.0) * (-fp_half * fp_half); // Объединили 2-й и 5-й члены
+        double c_Hmod = h * (f_half + (h * h / 24.0) * f2_half) + (h5 / 240.0) * (-fp_half * fp_half); // Объединили 2-й и 5-й члены
         double c_C1    = -(h * h * h / 12.0) * fp_half;
         double c_C2    = (h5 / 7200.0) * f2_half;
         double c_C3    = (h5 / 30.0) * f2_half * (f_half + 0.25 * h * h * f2_half);
