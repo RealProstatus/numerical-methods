@@ -44,6 +44,15 @@ endif()
 target_include_directories(computational_methods PUBLIC ${CORE_INCLUDE_DIRS})
 target_link_libraries(computational_methods PUBLIC project_options mkl_dependency eigen_dependency)
 
+find_library(PAPI_LIBRARY NAMES papi)
+if(PAPI_LIBRARY)
+    target_link_libraries(computational_methods PUBLIC ${PAPI_LIBRARY})
+    target_compile_definitions(computational_methods PUBLIC HAS_PAPI=1)
+    message(STATUS "PAPI found: ${PAPI_LIBRARY}")
+else()
+    message(WARNING "PAPI library not found! Hardware FLOP counting will be disabled.")
+endif()
+
 add_library(one_cpu_solver STATIC
     solvers/single_cpu/PiecewiseMagnus.cpp
     solvers/single_cpu/PiecewiseMagnus.h

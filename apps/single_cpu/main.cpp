@@ -928,9 +928,9 @@ namespace {
     constexpr double PI = 3.14159265358979323846;
 
     // Параметры эксперимента
-    constexpr int N = 128;            // Размерность матриц N x N
+    constexpr int N = 256;            // Размерность матриц N x N
     constexpr int NUM_ITERS = 4;      // Число прогонов для усреднения времени
-    constexpr double H_STEP = 1e-3;   // Величина одного шага интегрирования h
+    constexpr double H_STEP = 1e-2;   // Величина одного шага интегрирования h
     constexpr double EPS0 = 1.0;      // Амплитуда модуляции f(t) = eps0 * cos(W * t)
     constexpr double W = 2.0 * PI;    // Частота модуляции
 
@@ -983,10 +983,13 @@ namespace {
             double total_time_ms = 0.0;
 
             for (int iter = 0; iter < NUM_ITERS; ++iter) {
+                // PAPI аппаратный счетчик начинает замер в момент создания scope
                 profiling::FlopScope scope;
                 calc_mat = runner(prob);
+                
+                // Фиксируем аппаратные FLOPs за первый прогон
                 if (iter == 0) {
-                    single_run_flops = scope.flops(); // Точное число FLOPs за 1 вызов
+                    single_run_flops = scope.flops(); 
                 }
                 total_time_ms += scope.elapsed_ms();
             }
@@ -1047,7 +1050,7 @@ namespace {
         cout << left << setw(24) << "Method"
              << setw(10) << param_col
              << setw(18) << "Worst Error"
-             << setw(16) << "FLOPs"
+             << setw(16) << "FLOPs (PAPI)"
              << setw(14) << "Time (ms)"
              << setw(12) << "GFLOP/s"
              << "Worst Matrix\n";
@@ -1085,8 +1088,8 @@ int main() {
 
     mkl_set_dynamic(0);
     omp_set_dynamic(0);
-    mkl_set_num_threads(6);
-    omp_set_num_threads(6);
+    mkl_set_num_threads(1);
+    omp_set_num_threads(1);
 
     cout << "========================================================================================================\n";
     cout << " EXPERIMENT: Accuracy vs FLOPs across 3 Constant Matrix Problems (N = " << N << ", h = " << H_STEP << ")\n";
@@ -1121,7 +1124,7 @@ int main() {
         problems[2].Hmod = utils::generate_hermitian_matrix(N, 5.0);
     }
 
-    // Вычисление эталонов Omega_ref и U_ref (FlopCounter здесь отключен: enabled_ == false)
+    // Вычисление эталонов Omega_ref и U_ref (выполняются без FlopScope, чтобы не засорять счетчик)
     const double ref_dt = H_STEP * 1e-3;
     for (auto& prob : problems) {
         cout << "Preparing reference Omega_ref and U_ref for [" << prob.name << "]...\n";

@@ -2,6 +2,11 @@
 
 #include <cstdint>
 #include <chrono>
+#include <iostream>
+
+#if defined(HAS_PAPI)
+#include <papi.h>
+#endif
 
 namespace profiling
 {
@@ -36,80 +41,86 @@ public:
         }
     }
 
+    static inline void add_explicit(uint64_t count) noexcept
+    {
+        total_flop_cnt += count;
+    }
+
     static inline uint64_t get_total_flops() noexcept { return total_flop_cnt; }
     static inline bool is_enabled() noexcept { return enabled; }
     static inline void set_enabled(bool state) noexcept { enabled = state; }
 
-    // Standart formulas for std::complex<double>
-
-    static inline void add_zgemm(int N, bool has_alpha = false, bool has_betta = false)
-    {
-        if (!enabled)
-        {
-            return;
-        }
-
-        const uint64_t n = static_cast<uint64_t>(N);
-
-        // N^3 complex mult (6 FLOP) + N^2*(N-1) complex add (2 FLOP)
-        uint64_t ops = 8 * n*n*n - 2 * n*n;
-        if (has_alpha)
-        {
-            ops += 6 * n*n;
-        }
-        if (has_betta)
-        {
-            ops += 8 * n*n;
-        }
-
-        total_flop_cnt += ops;
-    }
-
-    static inline void add_zaxpy(int N) noexcept
-    {
-        add(8 * static_cast<uint64_t>(N));
-    }
-
-    static inline void add_zadd(int N) noexcept
-    {
-        add(2 * static_cast<uint64_t>(N));
-    }
-
-    // X = alpha * X (умножение комплексного числа на комплексное = 6 FLOP, на вещественное = 2 FLOP)
-    static inline void add_zscal(int N, bool complex_scalar = true) noexcept
-    {
-        add((complex_scalar ? 6 : 2) * static_cast<uint64_t>(N));
-    }
-
-    // 1-норма матрицы: N^2 |z| = sqrt(re^2 + im^2) (4 FLOP) + N(N-1) сумма по столбцам (1 FLOP)
-    static inline void add_zlange(int N) noexcept
-    {
-        const uint64_t n2 = static_cast<uint64_t>(N) * static_cast<uint64_t>(N);
-        add(5 * n2 - static_cast<uint64_t>(N));
-    }
+    // Заглушки для обратной совместимости, чтобы старый код компилировался без изменений
+    static inline void add_zgemm(int, bool = false, bool = false) noexcept {}
+    static inline void add_zaxpy(int) noexcept {}
+    static inline void add_zadd(int) noexcept {}
+    static inline void add_zscal(int, bool = true) noexcept {}
+    static inline void add_zlange(int) noexcept {}
 };
 
-// RAII keeper of FlopCounter
+// RAII кипер с использованием PAPI
 class FlopScope
 {
     uint64_t start_flop_cnt;
     bool prev_enabled;
     std::chrono::high_resolution_clock::time_point start_time;
 
+#if defined(HAS_PAPI)
+    int event_set = PAPI_NULL;
+    bool papi_active = false;
+#endif
+
 public:
-    FlopScope() noexcept :  start_flop_cnt(FlopCounter::get_total_flops()),
-                            prev_enabled(FlopCounter::is_enabled()),
-                            start_time(std::chrono::high_resolution_clock::now())
+    FlopScope() noexcept 
+        : start_flop_cnt(FlopCounter::get_total_flops()),
+          prev_enabled(FlopCounter::is_enabled()),
+          start_time(std::chrono::high_resolution_clock::now())
     {
         FlopCounter::set_enabled(true);
+
+#if defined(HAS_PAPI)
+        if (PAPI_is_initialized() != PAPI_HIGH_LEVEL_INITED) {
+            if (PAPI_library_init(PAPI_VER_CURRENT) != PAPI_VER_CURRENT) {
+                return;
+            }
+        }
+
+        if (PAPI_create_eventset(&event_set) == PAPI_OK) {
+            // Пытаемся добавить счетчик DP (двойная точность) FLOPS
+            if (PAPI_add_event(event_set, PAPI_DP_OPS) == PAPI_OK) {
+                if (PAPI_start(event_set) == PAPI_OK) {
+                    papi_active = true;
+                }
+            } 
+            // Fallback на общие FP_OPS, если DP_OPS недоступен на уровне процессора в VM
+            else if (PAPI_add_event(event_set, PAPI_FP_OPS) == PAPI_OK) {
+                if (PAPI_start(event_set) == PAPI_OK) {
+                    papi_active = true;
+                }
+            }
+            
+            if (!papi_active) {
+                PAPI_destroy_eventset(&event_set);
+                event_set = PAPI_NULL;
+            }
+        }
+#endif
     }
 
     ~FlopScope() noexcept
     {
+#if defined(HAS_PAPI)
+        if (papi_active && event_set != PAPI_NULL) {
+            long long counter_value = 0;
+            if (PAPI_stop(event_set, &counter_value) == PAPI_OK) {
+                FlopCounter::add_explicit(static_cast<uint64_t>(counter_value));
+            }
+            PAPI_destroy_eventset(&event_set);
+        }
+#endif
         FlopCounter::set_enabled(prev_enabled);
     }
 
-    // Copy is prohibited
     FlopScope(const FlopScope&) = delete;
     FlopScope& operator=(const FlopScope&) = delete;
 
