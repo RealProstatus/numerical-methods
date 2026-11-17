@@ -930,7 +930,7 @@ namespace {
     // Параметры эксперимента
     constexpr int N = 256;            // Размерность матриц N x N
     constexpr int NUM_ITERS = 4;      // Число прогонов для усреднения времени
-    constexpr double H_STEP = 1e-2;   // Величина одного шага интегрирования h
+    constexpr double H_STEP = 1e-3;   // Величина одного шага интегрирования h
     constexpr double EPS0 = 1.0;      // Амплитуда модуляции f(t) = eps0 * cos(W * t)
     constexpr double W = 2.0 * PI;    // Частота модуляции
 
@@ -982,19 +982,18 @@ namespace {
             uint64_t single_run_flops = 0;
             double total_time_ms = 0.0;
 
+            profiling::FlopScope scope; 
+    
             for (int iter = 0; iter < NUM_ITERS; ++iter) {
-                // PAPI аппаратный счетчик начинает замер в момент создания scope
-                profiling::FlopScope scope;
                 calc_mat = runner(prob);
-                
-                // Фиксируем аппаратные FLOPs за первый прогон
-                if (iter == 0) {
-                    single_run_flops = scope.flops(); 
-                }
-                total_time_ms += scope.elapsed_ms();
             }
 
+            // Получаем суммарное время и FLOPs за все NUM_ITERS итераций
+            total_time_ms = scope.elapsed_ms();
+            uint64_t total_flops = scope.flops();
+
             const double avg_time_ms = total_time_ms / NUM_ITERS;
+            single_run_flops = total_flops / NUM_ITERS;
             const CMatrix& ref_mat = compare_with_omega ? prob.Omega_ref : prob.U_ref;
             const double err = matrix_ops::max_element_diff(calc_mat, ref_mat, N);
 

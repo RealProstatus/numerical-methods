@@ -3,10 +3,7 @@
 #include <cstdint>
 #include <chrono>
 #include <iostream>
-
-#if defined(HAS_PAPI)
 #include <papi.h>
-#endif
 
 namespace profiling
 {
@@ -50,7 +47,7 @@ public:
     static inline bool is_enabled() noexcept { return enabled; }
     static inline void set_enabled(bool state) noexcept { enabled = state; }
 
-    // Заглушки для обратной совместимости, чтобы старый код компилировался без изменений
+    // Заглушки пустые, мы полностью доверяем PAPI
     static inline void add_zgemm(int, bool = false, bool = false) noexcept {}
     static inline void add_zaxpy(int) noexcept {}
     static inline void add_zadd(int) noexcept {}
@@ -65,10 +62,8 @@ class FlopScope
     bool prev_enabled;
     std::chrono::high_resolution_clock::time_point start_time;
 
-#if defined(HAS_PAPI)
     int event_set = PAPI_NULL;
     bool papi_active = false;
-#endif
 
 public:
     FlopScope() noexcept 
@@ -78,9 +73,9 @@ public:
     {
         FlopCounter::set_enabled(true);
 
-#if defined(HAS_PAPI)
-        if (PAPI_is_initialized() != PAPI_HIGH_LEVEL_INITED) {
+        if (!PAPI_is_initialized()) {
             if (PAPI_library_init(PAPI_VER_CURRENT) != PAPI_VER_CURRENT) {
+                std::cerr << "PAPI library init error!\n";
                 return;
             }
         }
@@ -92,7 +87,7 @@ public:
                     papi_active = true;
                 }
             } 
-            // Fallback на общие FP_OPS, если DP_OPS недоступен на уровне процессора в VM
+            // Fallback на общие FP_OPS
             else if (PAPI_add_event(event_set, PAPI_FP_OPS) == PAPI_OK) {
                 if (PAPI_start(event_set) == PAPI_OK) {
                     papi_active = true;
@@ -100,24 +95,25 @@ public:
             }
             
             if (!papi_active) {
+                std::cerr << "PAPI failed to start hardware counters!\n";
+                PAPI_cleanup_eventset(event_set);
                 PAPI_destroy_eventset(&event_set);
                 event_set = PAPI_NULL;
             }
         }
-#endif
     }
 
     ~FlopScope() noexcept
     {
-#if defined(HAS_PAPI)
         if (papi_active && event_set != PAPI_NULL) {
             long long counter_value = 0;
+            // Фиксируем финальные значения и останавливаем счетчик
             if (PAPI_stop(event_set, &counter_value) == PAPI_OK) {
                 FlopCounter::add_explicit(static_cast<uint64_t>(counter_value));
             }
+            PAPI_cleanup_eventset(event_set);
             PAPI_destroy_eventset(&event_set);
         }
-#endif
         FlopCounter::set_enabled(prev_enabled);
     }
 
@@ -126,7 +122,18 @@ public:
 
     uint64_t flops() const noexcept
     {
-        return FlopCounter::get_total_flops() - start_flop_cnt;
+        uint64_t current_hw_flops = 0;
+        
+        if (papi_active && event_set != PAPI_NULL) {
+            long long counter_value = 0;
+            // Читаем текущее значение счетчика "на лету" без его остановки
+            if (PAPI_read(event_set, &counter_value) == PAPI_OK) {
+                current_hw_flops = static_cast<uint64_t>(counter_value);
+            }
+        }
+        
+        // Суммируем программные флопсы (если остались в коде) и актуальные аппаратные
+        return (FlopCounter::get_total_flops() - start_flop_cnt) + current_hw_flops;
     }
 
     double elapsed_ms() const noexcept
