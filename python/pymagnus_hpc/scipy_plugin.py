@@ -1,7 +1,6 @@
 from __future__ import annotations
 import numpy as np
 from scipy.integrate import OdeSolver
-from scipy.integrate._ivp.common import OdeResult
 from .solver import solve_magnus
 
 class MagnusOdeSolver(OdeSolver):

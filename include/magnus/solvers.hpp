@@ -84,4 +84,24 @@ namespace magnus {
     bool has_cuda_backend() noexcept;
     bool has_mpi_backend() noexcept;
 
+    void propagate_cuda_gl3_raw(
+        std::size_t dim,
+        const Complex* H0_ptr,
+        const Complex* H1_ptr,
+        const double* time_nodes,
+        std::size_t num_time_nodes,
+        const double* gl_nodes,
+        const SolverOptions& opts,
+        Complex* U_out_ptr
+    );
+
+    void propagate_general_gl_mkl(
+        std::size_t dim,
+        const double* time_nodes,
+        std::size_t num_time_nodes,
+        const Complex* A_gl_nodes,
+        const SolverOptions& opts,
+        Complex* U_out_ptr
+    );
+
 } // namespace magnus

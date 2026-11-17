@@ -1,6 +1,7 @@
 #include "Formula314Magnus.h"
 #include "ClassicMagnus.h"
 #include <mkl.h>
+#include <cmath>
 
 using namespace std;
 using namespace matrix_ops;
@@ -14,11 +15,75 @@ namespace
 
         // Result = alpha * A * B + 1.0 * Result
         cblas_zgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                    N, N, N, &alpha, A.data(), N, B.data(), N, &one, Result.data(), N);
+            N, N, N, &alpha, A.data(), N, B.data(), N, &one, Result.data(), N);
 
         // Result = (-alpha) * B * A + 1.0 * Result
         cblas_zgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                    N, N, N, &minus_alpha, B.data(), N, A.data(), N, &one, Result.data(), N);
+            N, N, N, &minus_alpha, B.data(), N, A.data(), N, &one, Result.data(), N);
+    }
+
+    CMatrix compute_Omega_3_14_impl(
+        const CMatrix& H0,
+        const CMatrix& Hmod,
+        double h,
+        double f_t0,
+        double f_half,
+        double f_t1,
+        double fp_half,
+        double f2_half,
+        int N)
+    {
+        const double h2 = h * h;
+        const double h3 = h2 * h;
+        const double h5 = h3 * h2;
+
+        // Точные коэффициенты Бланеса-Касаса-Роса (формула 3.14, 6-й порядок)
+        const double c_Hmod = h * (0.1 * f_t0 + 0.8 * f_half + 0.1 * f_t1) + (h3 / 60.0) * f2_half;
+        const double c_C1 = -(h2 / 20.0) * (f_t1 - f_t0) - (h3 / 30.0) * fp_half;
+        const double c_C2 = (h5 / 720.0) * f2_half;
+        const double c_C3 = (h5 / 720.0) * f_half * f2_half - (h5 / 240.0) * (fp_half * fp_half);
+        const double c_C4 = (h5 / 720.0) * fp_half;
+        const double c_C5 = (h5 / 720.0) * f_half * fp_half;
+        const double c_C6 = (h5 / 720.0) * f_half * fp_half;
+        const double c_C7 = (h5 / 720.0) * (f_half * f_half) * fp_half;
+
+        CMatrix Omega((size_t)N * N);
+        CMatrix C1((size_t)N * N);
+        CMatrix C2((size_t)N * N);
+        CMatrix C3((size_t)N * N);
+
+#pragma omp parallel for schedule(static)
+        for (int i = 0; i < N * N; ++i) {
+            Omega[i] = complexd(0.0, 0.0);
+            C1[i] = complexd(0.0, 0.0);
+            C2[i] = complexd(0.0, 0.0);
+            C3[i] = complexd(0.0, 0.0);
+        }
+
+        mat_axpy(H0, Omega, N, complexd(h, 0.0));
+        mat_axpy(Hmod, Omega, N, complexd(c_Hmod, 0.0));
+
+        // C1 = [H0, Hmod]
+        commutator_inplace(H0, Hmod, C1, N);
+        mat_axpy(C1, Omega, N, complexd(c_C1, 0.0));
+
+        // C2 = [H0, C1]
+        commutator_inplace(H0, C1, C2, N);
+        mat_axpy(C2, Omega, N, complexd(c_C2, 0.0));
+
+        // C4 = [H0, C2], C5 = [Hmod, C2]
+        accumulate_commutator(H0, C2, Omega, N, complexd(c_C4, 0.0));
+        accumulate_commutator(Hmod, C2, Omega, N, complexd(c_C5, 0.0));
+
+        // C3 = [Hmod, C1]
+        commutator_inplace(Hmod, C1, C3, N);
+        mat_axpy(C3, Omega, N, complexd(c_C3, 0.0));
+
+        // C6 = [H0, C3], C7 = [Hmod, C3]
+        accumulate_commutator(H0, C3, Omega, N, complexd(c_C6, 0.0));
+        accumulate_commutator(Hmod, C3, Omega, N, complexd(c_C7, 0.0));
+
+        return Omega;
     }
 }
 
@@ -35,13 +100,13 @@ CMatrix magnus_3_14(double t0, double t1, double dt, int N, const CMatrix& H0, c
     auto fp_fun = [&](double t) { return -eps0 * W * std::sin(W * t); };
     auto f2_fun = [&](double t) { return -eps0 * W * W * std::cos(W * t); };
 
+    double f_t0 = f_fun(t0);
     double f_t1 = f_fun(t1);
     double f_half = f_fun(t_half);
     double fp_half = fp_fun(t_half);
     double f2_half = f2_fun(t_half);
-    double f2_t1 = f2_fun(t1);
 
-    return compute_Omega_3_14(H0, H_mod, h, f_t1, f_half, fp_half, f2_half, f2_t1, N);
+    return compute_Omega_3_14_impl(H0, H_mod, h, f_t0, f_half, f_t1, fp_half, f2_half, N);
 }
 
 namespace matrix_ops {
@@ -53,70 +118,10 @@ namespace matrix_ops {
         double f_half,
         double fp_half,
         double f2_half,
-        double f2_t1,
+        double /*f2_t1*/,
         int N)
     {
-        // Coeffs computing in advance
-        double h5 = h * h * h * h * h;
-        double h7 = h5 * h * h;
-
-        double c_Hmod = h * (f_half + (h * h / 24.0) * f2_half) + (h5 / 240.0) * (-fp_half * fp_half); // Объединили 2-й и 5-й члены
-        double c_C1    = -(h * h * h / 12.0) * fp_half;
-        double c_C2    = (h5 / 7200.0) * f2_half;
-        double c_C3    = (h5 / 30.0) * f2_half * (f_half + 0.25 * h * h * f2_half);
-        double c_C4    = (h5 / 7200.0) * fp_half;
-        double c_C5    = (h5 / 7200.0) * (f_half * fp_half + 0.25 * h * h * f2_half);
-        double c_C6    = (h5 / 7200.0) * f_half * fp_half;
-        double c_C7    = (h5 / 7200.0) * (f_half * fp_half * (f_t1 + 0.25 * h * h * f2_half));
-        double c_C8    = -(h7 / 14400.0) * (fp_half * fp_half);
-        double c_C9    = -(h7 / 14400.0) * (fp_half * fp_half * f_half);
-
-        // Pre-allocate
-        CMatrix Omega((size_t)N * N);
-        CMatrix C1((size_t)N * N);
-        CMatrix C2((size_t)N * N);
-        CMatrix C3((size_t)N * N);
-
-        // NUMA First-Touch Policy: необходимо, чтобы каждое ядро "ходило" в свою NUMA Node
-        // сыграет роль, только если ядра принадлежат разным NUMA Nod`ам
-        #pragma omp parallel for schedule(static)
-        for (int i = 0; i < N * N; ++i) {
-            Omega[i] = complexd(0.0, 0.0);
-            C1[i] = complexd(0.0, 0.0);
-            C2[i] = complexd(0.0, 0.0);
-            C3[i] = complexd(0.0, 0.0);
-        }
-
-        mat_axpy(H0, Omega, N, complexd(h, 0.0));
-        mat_axpy(Hmod, Omega, N, complexd(c_Hmod, 0.0));
-
-        // C1 = [H0, Hmod]
-        commutator_inplace(H0, Hmod, C1, N);
-        // adding to omega
-        mat_axpy(C1, Omega, N, complexd(c_C1, 0.0));
-
-        // C2 = [H0, C1]
-        commutator_inplace(H0, C1, C2, N);
-        // adding to omega
-        mat_axpy(C2, Omega, N, complexd(c_C2, 0.0));
-
-        // C4 = [H0, C2], C5 = [Hmod, C2], C8 = [C1, C2]
-        accumulate_commutator(H0, C2, Omega, N, complexd(c_C4, 0.0));
-        accumulate_commutator(Hmod, C2, Omega, N, complexd(c_C5, 0.0));
-        accumulate_commutator(C1, C2, Omega, N, complexd(c_C8, 0.0));
-
-        // C3 = [Hmod, C1]
-        commutator_inplace(Hmod, C1, C3, N);
-        // adding to omega
-        mat_axpy(C3, Omega, N, complexd(c_C3, 0.0));
-
-        // C6 = [H0, C3], C7 = [Hmod, C3], C9 = [C1, C3]
-        accumulate_commutator(H0, C3, Omega, N, complexd(c_C6, 0.0));
-        accumulate_commutator(Hmod, C3, Omega, N, complexd(c_C7, 0.0));
-        accumulate_commutator(C1, C3, Omega, N, complexd(c_C9, 0.0));
-
-        return Omega;
+        const double f_t0 = f_t1 - h * fp_half;
+        return compute_Omega_3_14_impl(H0, Hmod, h, f_t0, f_half, f_t1, fp_half, f2_half, N);
     }
 }
-
-

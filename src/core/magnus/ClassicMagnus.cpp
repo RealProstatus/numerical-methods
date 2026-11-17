@@ -82,7 +82,7 @@ CMatrix magnus_classic(double t0, double t1, double dt, int N, const CMatrix& H0
     int M = A.size();
 
     CMatrix Omega((size_t)N * N, complexd(0.0, 0.0));
-    CMatrix Omega1 = trapezoidal_integral(A, dt, N);
+    CMatrix Omega1 = (max_order >= 2) ? simpson_integral(A, dt, N) : trapezoidal_integral(A, dt, N);
     mat_add(Omega, Omega1, Omega, N);
 
     if (max_order == 1) return Omega;
