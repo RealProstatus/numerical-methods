@@ -13,6 +13,59 @@ _SQRT15 = math.sqrt(15.0)
 _GL3_C1 = 0.5 - _SQRT15 / 10.0
 _GL3_C2 = 0.5
 _GL3_C3 = 0.5 + _SQRT15 / 10.0
+_GL3_C_ARR = np.array([_GL3_C1, _GL3_C2, _GL3_C3], dtype=np.float64)
+
+
+def _detect_harmonic_cos(fn) -> tuple[float, float] | None:
+    """
+    Проверяет, совпадает ли fn(t) с eps * cos(omega * t) (omega > 0).
+    При малейшем отклонении возвращает None (безопасный откат на общий GL3-путь).
+    """
+    try:
+        eps = float(fn(0.0))
+    except Exception:
+        return None
+    if not math.isfinite(eps) or abs(eps) < 1e-14:
+        return None
+
+    omega = None
+    for dt in (1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2, 3e-2, 0.1, 0.3, 1.0, 3.0, 10.0, 100.0):
+        try:
+            r = float(fn(dt)) / eps
+        except Exception:
+            return None
+        if not math.isfinite(r):
+            return None
+        if 0.0 < r < 0.999:
+            omega = math.acos(r) / dt
+            break
+
+    if omega is None or not math.isfinite(omega) or omega <= 0.0:
+        return None
+
+    # Уточняем omega в точке максимальной чувствительности (omega * dt ~ 1 рад)
+    dt_opt = 1.0 / omega
+    try:
+        r_opt = float(fn(dt_opt)) / eps
+    except Exception:
+        return None
+    if not (-1.0 <= r_opt <= 1.0):
+        return None
+    omega = math.acos(r_opt) / dt_opt
+    if not math.isfinite(omega) or omega <= 0.0:
+        return None
+
+    tol = 1e-11 * max(1.0, abs(eps))
+    for scale in (-2.37, -0.71, -0.19, 0.37, 1.23, 2.71, 4.13, 7.89, 13.41):
+        t_test = scale / omega
+        try:
+            val = float(fn(t_test))
+        except Exception:
+            return None
+        if not math.isfinite(val) or abs(val - eps * math.cos(omega * t_test)) > tol:
+            return None
+
+    return eps, omega
 
 _METHOD_ORDER = {
     "Classic2": 2,
@@ -48,6 +101,7 @@ class MagnusChebyshevIntegrator(Integrator):
         "expm_method": "Chebyshev",
         "backend": "Cpu",
         "chebyshev_degree": 16,
+        "use_harmonic_core": True
     }
 
     def __init__(self, system: qt.QobjEvo, options: dict):
@@ -59,7 +113,6 @@ class MagnusChebyshevIntegrator(Integrator):
         self._channels = []
         self._use_oracle = False
 
-        # Лениво предвычисляемые 1-нормы для априорной оценки ошибки
         self._norms_ready = False
         self._norms_order = 0
         self._norm_scale = 1.0
@@ -70,6 +123,8 @@ class MagnusChebyshevIntegrator(Integrator):
         # Счётчики шагов для профилирования и work-precision диаграмм
         self.total_steps = 0
         self.rejected_steps = 0
+
+        self._harmonic_params: tuple[float, float] | None = None
 
         super().__init__(system, options)
 
@@ -82,6 +137,7 @@ class MagnusChebyshevIntegrator(Integrator):
         self._norms_order = 0
         self._sc_norms.clear()
         self._mc_norm_Ak.clear()
+        self._harmonic_params = None
 
         try:
             elements = self.system.to_list()
@@ -113,6 +169,9 @@ class MagnusChebyshevIntegrator(Integrator):
                 N = self._channels[0][0].shape[0]
                 H0_accum = np.zeros((N, N), dtype=np.complex128)
             self._H0 = H0_accum
+            
+            if not self._use_oracle and len(self._channels) == 1:
+                self._harmonic_params = _detect_harmonic_cos(self._channels[0][1])
         except Exception:
             self._use_oracle = True
 
@@ -481,18 +540,54 @@ class MagnusChebyshevIntegrator(Integrator):
                 )
             elif len(self._channels) == 1:
                 H1_mat, f1_fn = self._channels[0]
-                U_step = solve_magnus(
-                    H0=self._H0,
-                    H1=H1_mat,
-                    t_start=self._t,
-                    t_final=t_target,
-                    steps=steps,
-                    f_mod=f1_fn,
-                    magnus_method=magnus_method,
-                    expm_method=expm_method,
-                    backend=backend,
-                    chebyshev_degree=chebyshev_degree,
-                )
+                use_harm = bool(self._options.get("use_harmonic_core", True))
+                if use_harm and backend != "Cuda" and self._harmonic_params is not None:
+                    h_eps, h_omega = self._harmonic_params
+                    t_mid = 0.5 * (self._t + t_target)
+                    tol_h = 1e-11 * max(1.0, abs(h_eps))
+                    if all(
+                        abs(f1_fn(tv) - h_eps * math.cos(h_omega * tv)) <= tol_h
+                        for tv in (self._t, t_mid, t_target)
+                    ):
+                        U_step = solve_magnus(
+                            H0=self._H0,
+                            H1=H1_mat,
+                            t_start=self._t,
+                            t_final=t_target,
+                            steps=steps,
+                            epsilon=h_eps,
+                            omega=h_omega,
+                            magnus_method=magnus_method,
+                            expm_method=expm_method,
+                            backend=backend,
+                            chebyshev_degree=chebyshev_degree,
+                        )
+                    else:
+                        U_step = solve_magnus(
+                            H0=self._H0,
+                            H1=H1_mat,
+                            t_start=self._t,
+                            t_final=t_target,
+                            steps=steps,
+                            f_mod=f1_fn,
+                            magnus_method=magnus_method,
+                            expm_method=expm_method,
+                            backend=backend,
+                            chebyshev_degree=chebyshev_degree,
+                        )
+                else:
+                    U_step = solve_magnus(
+                        H0=self._H0,
+                        H1=H1_mat,
+                        t_start=self._t,
+                        t_final=t_target,
+                        steps=steps,
+                        f_mod=f1_fn,
+                        magnus_method=magnus_method,
+                        expm_method=expm_method,
+                        backend=backend,
+                        chebyshev_degree=chebyshev_degree,
+                    )
             else:
                 U_step = solve_magnus(
                     H0=self._H0,
@@ -523,16 +618,42 @@ class MagnusChebyshevIntegrator(Integrator):
                 _magnus_py.propagate_general_gl_cpu(t_nodes, A_gl, opts, U_step)
             elif len(self._channels) == 1:
                 H1_mat, _ = self._channels[0]
-                U_step = solve_magnus(
-                    H0=self._H0,
-                    H1=H1_mat,
-                    time_nodes=t_nodes,
-                    gl_vals=payload,
-                    magnus_method=magnus_method,
-                    expm_method=expm_method,
-                    backend=backend,
-                    chebyshev_degree=chebyshev_degree,
-                )
+                use_harm = bool(self._options.get("use_harmonic_core", True))
+                matched_harmonic = False
+                if use_harm and backend != "Cuda" and self._harmonic_params is not None:
+                    h_eps, h_omega = self._harmonic_params
+                    t_gl = (
+                        t_nodes[:-1, None]
+                        + (t_nodes[1:] - t_nodes[:-1])[:, None] * _GL3_C_ARR[None, :]
+                    )
+                    tol_h = 1e-11 * max(1.0, abs(h_eps))
+                    matched_harmonic = bool(
+                        np.all(np.abs(payload - h_eps * np.cos(h_omega * t_gl)) <= tol_h)
+                    )
+
+                if matched_harmonic:
+                    U_step = solve_magnus(
+                        H0=self._H0,
+                        H1=H1_mat,
+                        time_nodes=t_nodes,
+                        epsilon=h_eps,
+                        omega=h_omega,
+                        magnus_method=magnus_method,
+                        expm_method=expm_method,
+                        backend=backend,
+                        chebyshev_degree=chebyshev_degree,
+                    )
+                else:
+                    U_step = solve_magnus(
+                        H0=self._H0,
+                        H1=H1_mat,
+                        time_nodes=t_nodes,
+                        gl_vals=payload,
+                        magnus_method=magnus_method,
+                        expm_method=expm_method,
+                        backend=backend,
+                        chebyshev_degree=chebyshev_degree,
+                    )
             else:
                 opts = _build_options(
                     magnus_method=magnus_method,

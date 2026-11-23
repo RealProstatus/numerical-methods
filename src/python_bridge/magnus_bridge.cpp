@@ -14,6 +14,7 @@
 #include "core/magnus/AccMagnus.h"
 #include "core/magnus/ClassicMagnus.h"
 #include "core/magnus/RecursiveMagnus.h"
+#include "core/magnus/Formula314Magnus.h"
 #include "core/matrix/MatrixOperations.h"
 #include "core/utils/ProblemSetup.h"
 #include "solvers/single_cpu/Formula314ChebyshevSolver.h"
@@ -521,73 +522,157 @@ namespace magnus {
 #endif
 
         if (is_harmonic) {
-            utils::PeriodicHamiltonian ham;
-            ham.dimension = N;
-            ham.H0 = H0;
-            ham.H1 = H1;
-            ham.epsilon = epsilon;
-            ham.omega = omega;
-            ham.hbar = opts.hbar;
+            bool is_uniform = true;
+            const double uniform_dt = (t_final - t_start) / static_cast<double>(steps);
+            for (int s = 0; s < steps; ++s) {
+                const double h_s = time_nodes[s + 1] - time_nodes[s];
+                if (std::abs(h_s - uniform_dt) > 1e-12 * std::max(1.0, std::abs(uniform_dt))) {
+                    is_uniform = false;
+                    break;
+                }
+            }
+
+            // Масштабируем на 1/hbar, так как core-методы (Classic, Acc, Recursive) работают при hbar = 1
+            CMatrix H0_eff = H0;
+            CMatrix H1_eff = H1;
+            if (std::abs(opts.hbar - 1.0) > 1e-15) {
+                const Complex inv_hbar(1.0 / opts.hbar, 0.0);
+                matrix_ops::mat_scale_inplace(H0_eff, N, inv_hbar);
+                matrix_ops::mat_scale_inplace(H1_eff, N, inv_hbar);
+            }
 
             if (opts.magnus_method == MagnusMethod::Formula314_6 &&
-                opts.expm_method == ExpmMethod::Chebyshev) {
+                opts.expm_method == ExpmMethod::Chebyshev &&
+                is_uniform && omega > 0.0) {
+                utils::PeriodicHamiltonian ham;
+                ham.dimension = N;
+                ham.H0 = H0;
+                ham.H1 = H1;
+                ham.epsilon = epsilon;
+                ham.omega = omega;
+                ham.hbar = opts.hbar;
+
                 single_cpu::Formula314ChebyshevOptions f_opts;
                 f_opts.chebyshev_degree = opts.chebyshev_degree;
                 U_res = single_cpu::solve_formula314_chebyshev(ham, t_start, t_final, steps, f_opts);
             }
-            else if (opts.magnus_method == MagnusMethod::Classic2 ||
-                opts.magnus_method == MagnusMethod::Classic4) {
-                const int classic_order = (opts.magnus_method == MagnusMethod::Classic2) ? 1 : 2;
-                const int sub_steps = 20;
-                const double macro_dt = (t_final - t_start) / steps;
-                const double sub_dt = macro_dt / sub_steps;
-
-                U_res.assign(total_elems, Complex(0.0, 0.0));
-                for (int i = 0; i < N; ++i) {
-                    U_res[static_cast<std::size_t>(i) * N + i] = Complex(1.0, 0.0);
-                }
-                CMatrix U_next(total_elems, Complex(0.0, 0.0));
-
-                for (int s = 0; s < steps; ++s) {
-                    const double t_curr = t_start + s * macro_dt;
-                    const double t_next = (s + 1 == steps) ? t_final : (t_curr + macro_dt);
-                    CMatrix Omega = magnus_classic(t_curr, t_next, sub_dt, N, H0, H1, epsilon, omega, classic_order);
-                    CMatrix U_step = apply_expm(Omega, N, opts);
-                    matrix_ops::matmul(U_step, U_res, U_next, N);
-                    U_res.swap(U_next);
-                }
-            }
-            else if (opts.magnus_method == MagnusMethod::Recursive) {
-                const int max_n = std::max(1, opts.recursive_order);
-                const int sub_steps = 20;
-                const double macro_dt = (t_final - t_start) / steps;
-                const double sub_dt = macro_dt / sub_steps;
-
-                U_res.assign(total_elems, Complex(0.0, 0.0));
-                for (int i = 0; i < N; ++i) {
-                    U_res[static_cast<std::size_t>(i) * N + i] = Complex(1.0, 0.0);
-                }
-                CMatrix U_next(total_elems, Complex(0.0, 0.0));
-
-                for (int s = 0; s < steps; ++s) {
-                    const double t_curr = t_start + s * macro_dt;
-                    const double t_next = (s + 1 == steps) ? t_final : (t_curr + macro_dt);
-                    CMatrix Omega = magnus_expansion(t_curr, t_next, sub_dt, N, H0, H1, epsilon, omega, max_n);
-                    CMatrix U_step = apply_expm(Omega, N, opts);
-                    matrix_ops::matmul(U_step, U_res, U_next, N);
-                    U_res.swap(U_next);
-                }
-            }
             else {
-                int order = 4;
-                if (opts.magnus_method == MagnusMethod::Acc4) {
-                    order = 4;
+                U_res.assign(total_elems, Complex(0.0, 0.0));
+                for (int i = 0; i < N; ++i) {
+                    U_res[static_cast<std::size_t>(i) * N + i] = Complex(1.0, 0.0);
                 }
-                else if (opts.magnus_method == MagnusMethod::Acc6 || opts.magnus_method == MagnusMethod::Formula314_6) {
-                    order = 6;
+                CMatrix U_next(total_elems, Complex(0.0, 0.0));
+
+                if (opts.magnus_method == MagnusMethod::Classic2 ||
+                    opts.magnus_method == MagnusMethod::Classic4) {
+                    const int classic_order = (opts.magnus_method == MagnusMethod::Classic2) ? 1 : 2;
+                    const int sub_steps = 20;
+
+                    for (int s = 0; s < steps; ++s) {
+                        const double t_curr = time_nodes[s];
+                        const double t_next = time_nodes[s + 1];
+                        const double sub_dt = (t_next - t_curr) / sub_steps;
+                        CMatrix Omega = magnus_classic(
+                            t_curr, t_next, sub_dt, N, H0_eff, H1_eff, epsilon, omega, classic_order
+                        );
+                        CMatrix U_step = apply_expm(Omega, N, opts);
+                        matrix_ops::matmul(U_step, U_res, U_next, N);
+                        U_res.swap(U_next);
+                    }
                 }
-                const double macro_dt = (t_final - t_start) / steps;
-                U_res = piecewise_magnus_solver(t_start, t_final, macro_dt, N, H0, H1, epsilon, omega, order);
+                else if (opts.magnus_method == MagnusMethod::Acc4 ||
+                    opts.magnus_method == MagnusMethod::Acc6) {
+                    const int acc_order = (opts.magnus_method == MagnusMethod::Acc6) ? 6 : 4;
+                    const int sub_steps = 20;
+
+                    for (int s = 0; s < steps; ++s) {
+                        const double t_curr = time_nodes[s];
+                        const double t_next = time_nodes[s + 1];
+                        const double sub_dt = (t_next - t_curr) / sub_steps;
+                        std::vector<CMatrix> samples = generate_samples(
+                            t_curr, t_next, sub_dt, N, H0_eff, H1_eff, epsilon, omega
+                        );
+                        CMatrix Omega = magnus_ACC(samples, sub_dt, N, acc_order);
+                        CMatrix U_step = apply_expm(Omega, N, opts);
+                        matrix_ops::matmul(U_step, U_res, U_next, N);
+                        U_res.swap(U_next);
+                    }
+                }
+                else if (opts.magnus_method == MagnusMethod::Recursive) {
+                    const int max_n = std::max(1, opts.recursive_order);
+                    const int sub_steps = 20;
+
+                    for (int s = 0; s < steps; ++s) {
+                        const double t_curr = time_nodes[s];
+                        const double t_next = time_nodes[s + 1];
+                        const double sub_dt = (t_next - t_curr) / sub_steps;
+                        CMatrix Omega = magnus_expansion(
+                            t_curr, t_next, sub_dt, N, H0_eff, H1_eff, epsilon, omega, max_n
+                        );
+                        CMatrix U_step = apply_expm(Omega, N, opts);
+                        matrix_ops::matmul(U_step, U_res, U_next, N);
+                        U_res.swap(U_next);
+                    }
+                }
+                else if (opts.magnus_method == MagnusMethod::Formula314_4) {
+                    // Аналитическая формула 3.14, усечённая до 4-го порядка
+                    const Complex minus_i(0.0, -1.0);
+                    CMatrix A0 = matrix_ops::mat_copy(H0_eff);
+                    CMatrix A1 = matrix_ops::mat_copy(H1_eff);
+                    matrix_ops::mat_scale_inplace(A0, N, minus_i);
+                    matrix_ops::mat_scale_inplace(A1, N, minus_i);
+
+                    CMatrix C1(total_elems, Complex(0.0, 0.0));
+                    matrix_ops::commutator_inplace(A0, A1, C1, N);
+                    CMatrix Omega(total_elems, Complex(0.0, 0.0));
+
+                    for (int s = 0; s < steps; ++s) {
+                        const double t_curr = time_nodes[s];
+                        const double t_next = time_nodes[s + 1];
+                        const double h = t_next - t_curr;
+                        const double h2 = h * h;
+                        const double h3 = h2 * h;
+                        const double t_half = 0.5 * (t_curr + t_next);
+
+                        const double f_t0 = epsilon * std::cos(omega * t_curr);
+                        const double f_t1 = epsilon * std::cos(omega * t_next);
+                        const double f_half = epsilon * std::cos(omega * t_half);
+                        const double fp_half = -epsilon * omega * std::sin(omega * t_half);
+                        const double f2_half = -epsilon * omega * omega * std::cos(omega * t_half);
+
+                        const double c_A1 = h * (0.1 * f_t0 + 0.8 * f_half + 0.1 * f_t1) + (h3 / 60.0) * f2_half;
+                        const double c_C1 = -(h2 / 20.0) * (f_t1 - f_t0) - (h3 / 30.0) * fp_half;
+
+                        std::fill(Omega.begin(), Omega.end(), Complex(0.0, 0.0));
+                        matrix_ops::mat_axpy(A0, Omega, N, Complex(h, 0.0));
+                        matrix_ops::mat_axpy(A1, Omega, N, Complex(c_A1, 0.0));
+                        matrix_ops::mat_axpy(C1, Omega, N, Complex(c_C1, 0.0));
+
+                        CMatrix U_step = apply_expm(Omega, N, opts);
+                        matrix_ops::matmul(U_step, U_res, U_next, N);
+                        U_res.swap(U_next);
+                    }
+                }
+                else {
+                    // Formula314_6 на неравномерной сетке или с PadeEigen/Taylor:
+                    // напрямую вызываем magnus_3_14 из core/magnus/Formula314Magnus.cpp
+                    // (magnus_3_14 ожидает антиэрмитовые генераторы A0 = -i/hbar * H0, A1 = -i/hbar * H1)
+                    const Complex minus_i(0.0, -1.0);
+                    CMatrix A0 = matrix_ops::mat_copy(H0_eff);
+                    CMatrix A1 = matrix_ops::mat_copy(H1_eff);
+                    matrix_ops::mat_scale_inplace(A0, N, minus_i);
+                    matrix_ops::mat_scale_inplace(A1, N, minus_i);
+
+                    for (int s = 0; s < steps; ++s) {
+                        const double t_curr = time_nodes[s];
+                        const double t_next = time_nodes[s + 1];
+                        const double h = t_next - t_curr;
+                        CMatrix Omega = magnus_3_14(t_curr, t_next, h, N, A0, A1, epsilon, omega);
+                        CMatrix U_step = apply_expm(Omega, N, opts);
+                        matrix_ops::matmul(U_step, U_res, U_next, N);
+                        U_res.swap(U_next);
+                    }
+                }
             }
         }
         else {

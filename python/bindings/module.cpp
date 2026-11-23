@@ -84,20 +84,40 @@ NB_MODULE(_magnus_py, m) {
             }
 
             nb::gil_scoped_release release;
-            if ((opts.backend == magnus::BackendType::Cuda ||
-                (opts.backend == magnus::BackendType::Auto && N >= 128 && magnus::has_cuda_backend())) &&
-                is_harmonic) {
+            bool is_uniform = true;
+            const std::size_t n_nodes = time_nodes.shape(0);
+            if (n_nodes > 2) {
+                const double* tn = time_nodes.data();
+                const double h0 = tn[1] - tn[0];
+                for (std::size_t s = 1; s + 1 < n_nodes; ++s) {
+                    if (std::abs((tn[s + 1] - tn[s]) - h0) > 1e-12 * std::max(1.0, std::abs(h0))) {
+                        is_uniform = false;
+                        break;
+                    }
+                }
+            }
+
+            const bool use_cuda_harmonic =
+                is_harmonic && is_uniform &&
+                (opts.backend == magnus::BackendType::Cuda ||
+                    (opts.backend == magnus::BackendType::Auto &&
+                        N >= 128 &&
+                        magnus::has_cuda_backend() &&
+                        opts.magnus_method == magnus::MagnusMethod::Formula314_6 &&
+                        opts.expm_method == magnus::ExpmMethod::Chebyshev));
+
+            if (use_cuda_harmonic) {
                 magnus::propagate_cuda_raw(
                     N, H0.data(), H1.data(),
-                    time_nodes.data()[0], time_nodes.data()[time_nodes.shape(0) - 1],
-                    static_cast<int>(time_nodes.shape(0) - 1),
+                    time_nodes.data()[0], time_nodes.data()[n_nodes - 1],
+                    static_cast<int>(n_nodes - 1),
                     epsilon, omega, opts, U_out.data(), false
                 );
             }
             else {
                 magnus::propagate_cpu_raw(
                     N, H0.data(), H1.data(),
-                    time_nodes.data(), time_nodes.shape(0),
+                    time_nodes.data(), n_nodes,
                     modulation_grid.data(), modulation_grid.shape(0),
                     is_harmonic, epsilon, omega, opts, U_out.data()
                 );

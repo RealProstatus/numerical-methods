@@ -15,22 +15,13 @@ CMatrix magnus_expansion(double t0, double t1, double integration_dt, int N,
     double eps0, double W, int max_n)
 {
     vector<CMatrix> A_samples = generate_samples(t0, t1, integration_dt, N, H0, H_mod, eps0, W);
-    int steps = A_samples.size();
+    int steps = static_cast<int>(A_samples.size());
 
-    vector<vector<CMatrix>> Omega_history(max_n + 1, vector<CMatrix>(steps));
+    vector<vector<CMatrix>> Omega_history(max_n + 1);
     CMatrix zero_mat((size_t)N * N, complexd(0.0, 0.0));
 
-    for (int k = 0; k <= max_n; ++k) {
-        for (int t = 0; t < steps; ++t) Omega_history[k][t] = zero_mat;
-    }
-
-    double dt_half = integration_dt * 0.5;
-    for (int i = 1; i < steps; ++i) {
-        CMatrix step_val = mat_copy(A_samples[i - 1]);
-        mat_add(step_val, A_samples[i], step_val, N);
-        mat_scale_inplace(step_val, N, complexd(dt_half, 0.0));
-        mat_add(Omega_history[1][i - 1], step_val, Omega_history[1][i], N);
-    }
+    // Omega_1(t) накопленным методом Симпсона (4-й порядок в каждом узле)
+    Omega_history[1] = cumulative_simpson_integral(A_samples, integration_dt, N);
 
     for (int n = 2; n <= max_n; ++n) {
         vector<CMatrix> Integrand(steps, zero_mat);
@@ -70,12 +61,8 @@ CMatrix magnus_expansion(double t0, double t1, double integration_dt, int N,
             }
         }
 
-        for (int i = 1; i < steps; ++i) {
-            CMatrix step_val = mat_copy(Integrand[i - 1]);
-            mat_add(step_val, Integrand[i], step_val, N);
-            mat_scale_inplace(step_val, N, complexd(dt_half, 0.0));
-            mat_add(Omega_history[n][i - 1], step_val, Omega_history[n][i], N);
-        }
+        // Omega_n(t) накопленным методом Симпсона (4-й порядок в каждом узле)
+        Omega_history[n] = cumulative_simpson_integral(Integrand, integration_dt, N);
     }
 
     CMatrix Omega_total((size_t)N * N, complexd(0.0, 0.0));
@@ -85,4 +72,3 @@ CMatrix magnus_expansion(double t0, double t1, double integration_dt, int N,
     }
     return Omega_total;
 }
-
