@@ -101,6 +101,7 @@ def solve_magnus(
     taylor_terms: int = 30,
     recursive_order: int = 6,
     hbar: float = 1.0,
+    gl_vals: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """
     Универсальный решатель уравнения Шрёдингера i * hbar * dU/dt = H(t) U(t):
@@ -177,18 +178,24 @@ def solve_magnus(
     H1_c = np.zeros_like(H0_c) if H1 is None else np.ascontiguousarray(H1, dtype=np.complex128)
 
     # === УРОВЕНЬ 1Б: Одноканальная произвольная модуляция f_mod(t) (CPU & CUDA) ===
-    if f_mod is not None:
-        gl_vals = evaluate_gl3_scalar(f_mod, t_nodes).ravel()
+    if f_mod is not None or gl_vals is not None:
+        gl_arr = (
+            np.ascontiguousarray(gl_vals, dtype=np.float64).ravel()
+            if gl_vals is not None
+            else evaluate_gl3_scalar(f_mod, t_nodes).ravel()
+        )
         if backend == "Cuda":
-            _magnus_py.propagate_cuda_gl3(H0_c, H1_c, t_nodes, gl_vals, opts, U_out)
+            _magnus_py.propagate_cuda_gl3(H0_c, H1_c, t_nodes, gl_arr, opts, U_out)
         else:
-            _magnus_py.propagate_cpu_zero_copy(H0_c, H1_c, t_nodes, gl_vals, False, 0.0, 0.0, opts, U_out)
+            _magnus_py.propagate_cpu_zero_copy(H0_c, H1_c, t_nodes, gl_arr, False, 0.0, 0.0, opts, U_out)
         return U_out
 
     # === УРОВЕНЬ 1А: Быстрый гармонический путь H0 + epsilon * cos(omega * t) * H1 ===
     # Выбор Cpu / Cuda / Auto выполняется внутри propagate_cpu_zero_copy по флагу opts.backend
+    eff_eps = float(epsilon)
+    eff_omega = float(omega) if float(omega) > 0.0 else (1.0 if eff_eps == 0.0 else float(omega))
     empty_mod = np.empty(0, dtype=np.float64)
     _magnus_py.propagate_cpu_zero_copy(
-        H0_c, H1_c, t_nodes, empty_mod, True, float(epsilon), float(omega), opts, U_out
+        H0_c, H1_c, t_nodes, empty_mod, True, eff_eps, eff_omega, opts, U_out
     )
     return U_out

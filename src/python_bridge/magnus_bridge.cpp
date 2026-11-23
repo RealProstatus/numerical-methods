@@ -68,6 +68,86 @@ namespace magnus {
                 U_total[static_cast<std::size_t>(i) * N + i] = Complex(1.0, 0.0);
             }
 
+            // Унифицированный быстрый путь для 3-узловой квадратуры Гаусса-Лежандра (3 * steps).
+            // Поддерживает все порядки (2, 4, 6) и произвольную неравномерную сетку time_nodes.
+            if (num_mod_points == 3 * steps) {
+                CMatrix Omega(total_elems, Complex(0.0, 0.0));
+                CMatrix U_next(total_elems, Complex(0.0, 0.0));
+
+                const bool is_order2 = (opts.magnus_method == MagnusMethod::Classic2);
+                const bool is_order4 = (opts.magnus_method == MagnusMethod::Classic4 ||
+                    opts.magnus_method == MagnusMethod::Acc4 ||
+                    opts.magnus_method == MagnusMethod::Formula314_4);
+                const bool is_order6 = !is_order2 && !is_order4;
+
+                CMatrix C1, C2, C3, C4, C5, C7;
+                if (!is_order2) {
+                    C1.assign(total_elems, Complex(0.0, 0.0));
+                    matrix_ops::commutator_inplace(A0, A1, C1, N);
+                }
+                if (is_order6) {
+                    C2.assign(total_elems, Complex(0.0, 0.0));
+                    C3.assign(total_elems, Complex(0.0, 0.0));
+                    C4.assign(total_elems, Complex(0.0, 0.0));
+                    C5.assign(total_elems, Complex(0.0, 0.0));
+                    C7.assign(total_elems, Complex(0.0, 0.0));
+
+                    matrix_ops::commutator_inplace(A0, C1, C2, N);
+                    matrix_ops::commutator_inplace(A1, C1, C3, N);
+                    matrix_ops::commutator_inplace(A0, C2, C4, N);
+                    // По тождеству Якоби C6 = [A0, [A1, C1]] == [A1, [A0, C1]] = C5
+                    matrix_ops::commutator_inplace(A1, C2, C5, N);
+                    matrix_ops::commutator_inplace(A1, C3, C7, N);
+                }
+
+                const double s15 = std::sqrt(15.0);
+                for (std::size_t step = 0; step < steps; ++step) {
+                    const double h = time_nodes[step + 1] - time_nodes[step];
+                    const double fv1 = mod_grid[3 * step + 0];
+                    const double fv2 = mod_grid[3 * step + 1];
+                    const double fv3 = mod_grid[3 * step + 2];
+
+                    std::fill(Omega.begin(), Omega.end(), Complex(0.0, 0.0));
+                    matrix_ops::mat_axpy(A0, Omega, N, Complex(h, 0.0));
+
+                    if (is_order2) {
+                        matrix_ops::mat_axpy(A1, Omega, N, Complex(h * fv2, 0.0));
+                    }
+                    else {
+                        const double fm = fv2;
+                        const double d1 = (s15 * h / 3.0) * (fv3 - fv1);
+                        const double d2 = (10.0 * h / 3.0) * (fv3 - 2.0 * fv2 + fv1);
+
+                        const double c_A1 = h * fm + (1.0 / 12.0) * d2;
+                        const double c_C1 = -(1.0 / 12.0) * h * d1;
+
+                        matrix_ops::mat_axpy(A1, Omega, N, Complex(c_A1, 0.0));
+                        matrix_ops::mat_axpy(C1, Omega, N, Complex(c_C1, 0.0));
+
+                        if (is_order6) {
+                            const double h2 = h * h;
+                            const double h3 = h2 * h;
+                            const double c_C2 = (1.0 / 360.0) * h2 * d2;
+                            const double c_C3 = -(1.0 / 240.0) * h * (d1 * d1) + (1.0 / 360.0) * h2 * fm * d2;
+                            const double c_C4 = (1.0 / 720.0) * h3 * d1;
+                            const double c_C56 = (1.0 / 360.0) * h3 * fm * d1; // c_C5 + c_C6
+                            const double c_C7 = (1.0 / 720.0) * h3 * (fm * fm) * d1;
+
+                            matrix_ops::mat_axpy(C2, Omega, N, Complex(c_C2, 0.0));
+                            matrix_ops::mat_axpy(C3, Omega, N, Complex(c_C3, 0.0));
+                            matrix_ops::mat_axpy(C4, Omega, N, Complex(c_C4, 0.0));
+                            matrix_ops::mat_axpy(C5, Omega, N, Complex(c_C56, 0.0));
+                            matrix_ops::mat_axpy(C7, Omega, N, Complex(c_C7, 0.0));
+                        }
+                    }
+
+                    CMatrix U_step = apply_expm(Omega, N, opts);
+                    matrix_ops::matmul(U_step, U_total, U_next, N);
+                    U_total.swap(U_next);
+                }
+                return;
+            }
+
             // Ветка для Acc4 / Acc6 через штатный magnus_ACC
             if (opts.magnus_method == MagnusMethod::Acc4 || opts.magnus_method == MagnusMethod::Acc6) {
                 const int order = (opts.magnus_method == MagnusMethod::Acc6) ? 6 : 4;
@@ -341,14 +421,16 @@ namespace magnus {
             else if (opts.magnus_method == MagnusMethod::Classic4 ||
                 opts.magnus_method == MagnusMethod::Acc4 ||
                 opts.magnus_method == MagnusMethod::Formula314_4) {
-                const double s15_15 = s15 / 15.0;
+                // Для 3-узловой сетки GL [A3, A1] = -(sqrt(15)/5) * h * [Am, Am'],
+                // поэтому коэффициент sqrt(15)/36 даёт точный член -(1/12) * h^3 * [Am, Am'].
+                const double s15_36 = s15 / 36.0;
                 std::memcpy(Omega.data(), A1.data(), elems * sizeof(Complex));
                 matrix_ops::mat_scale_inplace(Omega, N, Complex(5.0 * h / 18.0, 0.0));
                 matrix_ops::mat_axpy(A2, Omega, N, Complex(4.0 * h / 9.0, 0.0));
                 matrix_ops::mat_axpy(A3, Omega, N, Complex(5.0 * h / 18.0, 0.0));
 
                 matrix_ops::commutator_inplace(A3, A1, C1, N);
-                matrix_ops::mat_axpy(C1, Omega, N, Complex(s15_15 * h * h, 0.0));
+                matrix_ops::mat_axpy(C1, Omega, N, Complex(s15_36 * h * h, 0.0));
             }
             else {
                 // MagnusGL6 (Blanes-Casas-Ros, 6-й порядок)

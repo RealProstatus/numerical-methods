@@ -167,6 +167,11 @@ namespace magnus {
         const std::size_t size = dim * dim;
         const double s15 = std::sqrt(15.0);
 
+        const bool is_order2 = (opts.magnus_method == MagnusMethod::Classic2);
+        const bool is_order4 = (opts.magnus_method == MagnusMethod::Classic4 ||
+            opts.magnus_method == MagnusMethod::Acc4 ||
+            opts.magnus_method == MagnusMethod::Formula314_4);
+
         std::vector<cuda_optimized::StepCoeffs> coeffs(steps);
         for (std::size_t n = 0; n < steps; ++n) {
             const double h = time_nodes[n + 1] - time_nodes[n];
@@ -174,20 +179,37 @@ namespace magnus {
             const double fv2 = gl_nodes[3 * n + 1];
             const double fv3 = gl_nodes[3 * n + 2];
 
+            if (is_order2) {
+                coeffs[n] = cuda_optimized::StepCoeffs{
+                    h, h * fv2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+                };
+                continue;
+            }
+
             const double fm = fv2;
             const double d1 = (s15 * h / 3.0) * (fv3 - fv1);
             const double d2 = (10.0 * h / 3.0) * (fv3 - 2.0 * fv2 + fv1);
 
-            coeffs[n] = cuda_optimized::StepCoeffs{
-                h,
-                h * fm + (1.0 / 12.0) * d2,
-                -(1.0 / 12.0) * h * d1,
-                (1.0 / 360.0) * (h * h) * d2,
-                -(1.0 / 240.0) * h * (d1 * d1) + (1.0 / 360.0) * (h * h) * fm * d2,
-                (1.0 / 720.0) * (h * h * h) * d1,
-                (1.0 / 720.0) * (h * h * h) * fm * d1,
-                (1.0 / 720.0) * (h * h * h) * (fm * fm) * d1
-            };
+            if (is_order4) {
+                coeffs[n] = cuda_optimized::StepCoeffs{
+                    h,
+                    h * fm + (1.0 / 12.0) * d2,
+                    -(1.0 / 12.0) * h * d1,
+                    0.0, 0.0, 0.0, 0.0, 0.0
+                };
+            }
+            else {
+                coeffs[n] = cuda_optimized::StepCoeffs{
+                    h,
+                    h * fm + (1.0 / 12.0) * d2,
+                    -(1.0 / 12.0) * h * d1,
+                    (1.0 / 360.0) * (h * h) * d2,
+                    -(1.0 / 240.0) * h * (d1 * d1) + (1.0 / 360.0) * (h * h) * fm * d2,
+                    (1.0 / 720.0) * (h * h * h) * d1,
+                    (1.0 / 720.0) * (h * h * h) * fm * d1,
+                    (1.0 / 720.0) * (h * h * h) * (fm * fm) * d1
+                };
+            }
         }
 
         CMatrix h_H0(H0_ptr, H0_ptr + size);
