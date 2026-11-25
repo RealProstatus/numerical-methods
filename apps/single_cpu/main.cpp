@@ -910,47 +910,243 @@ int main() {
 #include <functional>
 #include <chrono>
 #include <limits>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <mkl.h>
 #include <omp.h>
 #include <clocale>
 
 #include "AllComputationalMethods.h"
-#include "RungeKutt.h"
 #include "FlopCounter.h"
 
 using namespace std;
 using namespace utils;
 using namespace matrix_ops;
-using namespace runge_kutta_simple;
 
 namespace {
 
     constexpr double PI = 3.14159265358979323846;
 
-    // Параметры эксперимента
-    constexpr int N = 256;            // Размерность матриц N x N
-    constexpr int NUM_ITERS = 4;      // Число прогонов для усреднения времени
-    constexpr double H_STEP = 1e-3;   // Величина одного шага интегрирования h
-    constexpr double EPS0 = 1.0;      // Амплитуда модуляции f(t) = eps0 * cos(W * t)
-    constexpr double W = 2.0 * PI;    // Частота модуляции
+    // -------------------------------------------------------------------------
+    // Глобальные параметры эксперимента
+    // -------------------------------------------------------------------------
+    constexpr int N = 256;               // Размерность матриц N x N
+    constexpr int NUM_ITERS = 3;         // Число прогонов для усреднения времени/FLOPs
+    constexpr double T_TOTAL = 1e-3;     // Фиксированный отрезок интегрирования [0, 0.001]
+    constexpr double EPS0 = 1.0;         // Амплитуда модуляции f(t) = EPS0 * cos(W * t)
+    constexpr double W = 2.0 * PI;       // Частота модуляции (период T = 1.0)
 
-    // Описание одной тестовой задачи (постоянной пары матриц H0, Hmod)
+    // Параметры эталонного расчета
+    constexpr double REF_DT = T_TOTAL * 1e-3; // 1e-6 (1000 интервалов)
+    constexpr int REF_MAGNUS_ORDER = 10;
+    constexpr int EXACT_CHEB_ORDER = 32;      // Машинно-точная экспонента для изоляции ошибки Omega
+
+    // Внутреннее разбиение одного шага [t_s, t_{s+1}] для Classic / Recursive / Formula314
+    // 6 подынтервалов = 7 узлов (равные условия с ACC 6 и точная 4-го порядка ветка Симпсона)
+    constexpr int INNER_SUB_DEFAULT = 6;
+
+    // Точные целые числа шагов K на [0, 0.001]: dt = 0.001 / K (от 1e-3 до 1e-6)
+    const vector<int> STEP_COUNTS = { 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000 };
+
+    // Порядки разложения Чебышева для Части 2
+    const vector<int> CHEB_ORDERS = { 2, 3, 4, 6, 8, 10, 12, 15, 20 };
+
+    // -------------------------------------------------------------------------
+    // Описание тестовой задачи и бинарного кэша эталонов
+    // -------------------------------------------------------------------------
     struct BenchmarkProblem {
         string name;
         CMatrix H0;
         CMatrix Hmod;
         CMatrix H0_anti;   // -i * H0 (для magnus_3_14)
         CMatrix Hmod_anti; // -i * Hmod (для magnus_3_14)
-        CMatrix Omega_ref; // Эталон матрицы Омега на шаге H_STEP
-        CMatrix U_ref;     // Эталон пропагатора U(H_STEP) = exp(Omega_ref)
+        CMatrix Omega_ref; // Эталон Omega(0, T_TOTAL)
+        CMatrix U_ref;     // Эталон U(T_TOTAL) = exp(Omega_ref)
     };
 
-    // Результат одного конкретного прогона (на одной матрице)
-    struct SingleRunRecord {
-        string method_name;
-        int param = 0;
-        string problem_name;
-        double error = 0.0;
+    struct ReferenceCacheHeader {
+        uint64_t magic = 0x4D41474E55535246ULL; // "MAGNUSRF"
+        uint32_t version = 3;                   // v3: Симпсон в эталоне + скорректированная 2_HighNonComm_DD
+        int32_t N = 0;
+        int32_t ref_order = 0;
+        int32_t num_problems = 0;
+        double T_total = 0.0;
+        double eps0 = 0.0;
+        double W = 0.0;
+        double ref_dt = 0.0;
+    };
+
+    bool write_matrix_bin(ofstream& out, const CMatrix& mat) {
+        const uint64_t count = static_cast<uint64_t>(mat.size());
+        out.write(reinterpret_cast<const char*>(&count), sizeof(count));
+        out.write(reinterpret_cast<const char*>(mat.data()), static_cast<std::streamsize>(count * sizeof(complexd)));
+        return out.good();
+    }
+
+    bool read_matrix_bin(ifstream& in, CMatrix& mat, size_t expected_count) {
+        uint64_t count = 0;
+        in.read(reinterpret_cast<char*>(&count), sizeof(count));
+        if (!in.good() || count != expected_count) return false;
+        mat.resize(expected_count);
+        in.read(reinterpret_cast<char*>(mat.data()), static_cast<std::streamsize>(count * sizeof(complexd)));
+        return in.good();
+    }
+
+    bool save_reference_cache(const string& path, const vector<BenchmarkProblem>& problems) {
+        ofstream out(path, ios::binary | ios::trunc);
+        if (!out.is_open()) return false;
+
+        ReferenceCacheHeader hdr;
+        hdr.N = N;
+        hdr.ref_order = REF_MAGNUS_ORDER;
+        hdr.num_problems = static_cast<int32_t>(problems.size());
+        hdr.T_total = T_TOTAL;
+        hdr.eps0 = EPS0;
+        hdr.W = W;
+        hdr.ref_dt = REF_DT;
+
+        out.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
+        for (const auto& p : problems) {
+            uint32_t name_len = static_cast<uint32_t>(p.name.size());
+            out.write(reinterpret_cast<const char*>(&name_len), sizeof(name_len));
+            out.write(p.name.data(), name_len);
+            if (!write_matrix_bin(out, p.H0)) return false;
+            if (!write_matrix_bin(out, p.Hmod)) return false;
+            if (!write_matrix_bin(out, p.Omega_ref)) return false;
+            if (!write_matrix_bin(out, p.U_ref)) return false;
+        }
+        return out.good();
+    }
+
+    bool load_reference_cache(const string& path, vector<BenchmarkProblem>& problems) {
+        ifstream in(path, ios::binary);
+        if (!in.is_open()) return false;
+
+        ReferenceCacheHeader hdr;
+        in.read(reinterpret_cast<char*>(&hdr), sizeof(hdr));
+        if (!in.good()) return false;
+
+        ReferenceCacheHeader expected;
+        if (hdr.magic != expected.magic ||
+            hdr.version != expected.version ||
+            hdr.N != N ||
+            hdr.ref_order != REF_MAGNUS_ORDER ||
+            hdr.num_problems <= 0 ||
+            hdr.T_total != T_TOTAL ||
+            hdr.eps0 != EPS0 ||
+            hdr.W != W ||
+            hdr.ref_dt != REF_DT)
+        {
+            return false;
+        }
+
+        const size_t elems = static_cast<size_t>(N) * static_cast<size_t>(N);
+        problems.clear();
+        problems.resize(static_cast<size_t>(hdr.num_problems));
+
+        for (int i = 0; i < hdr.num_problems; ++i) {
+            uint32_t name_len = 0;
+            in.read(reinterpret_cast<char*>(&name_len), sizeof(name_len));
+            if (!in.good() || name_len == 0 || name_len > 256) return false;
+
+            problems[i].name.resize(name_len);
+            in.read(problems[i].name.data(), name_len);
+            if (!in.good()) return false;
+
+            if (!read_matrix_bin(in, problems[i].H0, elems)) return false;
+            if (!read_matrix_bin(in, problems[i].Hmod, elems)) return false;
+            if (!read_matrix_bin(in, problems[i].Omega_ref, elems)) return false;
+            if (!read_matrix_bin(in, problems[i].U_ref, elems)) return false;
+
+            problems[i].H0_anti = matrix_ops::mat_scale(problems[i].H0, complexd(0.0, -1.0));
+            problems[i].Hmod_anti = matrix_ops::mat_scale(problems[i].Hmod, complexd(0.0, -1.0));
+        }
+
+        return true;
+    }
+
+    vector<BenchmarkProblem> load_or_generate_problems(bool force_rebuild) {
+        const string cache_path = utils::results_path("reference_cache_N256_T1e-3.bin");
+        vector<BenchmarkProblem> problems;
+
+        if (!force_rebuild && load_reference_cache(cache_path, problems)) {
+            cout << "[CACHE] Loaded reference matrices and solutions from: " << cache_path << "\n";
+            return problems;
+        }
+
+        cout << "[CACHE] Generating 3 benchmark problems and computing references...\n";
+        problems.resize(3);
+
+        // Задача 1: Хорошо обусловленная спектральная матрица (kappa = 10)
+        {
+            auto [H0_spec10, V10, D10] = utils::generate_spectral_matrix(N, 10.0, 10.0);
+            problems[0].name = "1_WellCond_Kappa10";
+            problems[0].H0 = std::move(H0_spec10);
+            problems[0].Hmod = utils::generate_hermitian_matrix(N, 2.0);
+        }
+
+        // Задача 2: Сильно некоммутирующая DD-пара со скорректированной нормой под [0, 0.001]
+        // (||H0||_2 ~ 80, ||Hmod||_2 ~ 390 => T * ||H||_2 ~ 0.47 << pi)
+        {
+            auto [H_ddA, H_ddB] = utils::generate_hermitian_pair_dd(N, 0.25, 0.25, 6.0, 15.0);
+            problems[1].name = "2_HighNonComm_DD";
+            problems[1].H0 = std::move(H_ddA);
+            problems[1].Hmod = std::move(H_ddB);
+        }
+
+        // Задача 3: Жесткая спектральная матрица (kappa = 10000)
+        {
+            auto [H0_spec10k, V10k, D10k] = utils::generate_spectral_matrix(N, 10000.0, 50.0);
+            problems[2].name = "3_Stiff_Kappa10000";
+            problems[2].H0 = std::move(H0_spec10k);
+            problems[2].Hmod = utils::generate_hermitian_matrix(N, 5.0);
+        }
+
+        for (auto& prob : problems) {
+            cout << "  Computing Omega_ref (Recursive order=" << REF_MAGNUS_ORDER
+                 << ", dt=" << REF_DT << ") and U_ref (Pade) for [" << prob.name << "]...\n";
+            prob.H0_anti = matrix_ops::mat_scale(prob.H0, complexd(0.0, -1.0));
+            prob.Hmod_anti = matrix_ops::mat_scale(prob.Hmod, complexd(0.0, -1.0));
+            prob.Omega_ref = magnus_expansion(0.0, T_TOTAL, REF_DT, N, prob.H0, prob.Hmod, EPS0, W, REF_MAGNUS_ORDER);
+            prob.U_ref = matrix_ops::expm_pade_eigen(prob.Omega_ref, N);
+        }
+
+        if (save_reference_cache(cache_path, problems)) {
+            cout << "[CACHE] Saved references to: " << cache_path << "\n";
+        } else {
+            cerr << "[WARN] Failed to write reference cache: " << cache_path << "\n";
+        }
+
+        return problems;
+    }
+
+    // -------------------------------------------------------------------------
+    // Точные целочисленные границы шага s in [0, num_steps - 1]
+    // -------------------------------------------------------------------------
+    using StepOmegaFn = function<CMatrix(const BenchmarkProblem&, double t0, double t1)>;
+
+    inline void step_bounds(int step_idx, int num_steps, double& t0, double& t1) {
+        t0 = (step_idx == 0)
+           ? 0.0
+           : T_TOTAL * (static_cast<double>(step_idx) / static_cast<double>(num_steps));
+        t1 = (step_idx + 1 == num_steps)
+           ? T_TOTAL
+           : T_TOTAL * (static_cast<double>(step_idx + 1) / static_cast<double>(num_steps));
+    }
+
+    // -------------------------------------------------------------------------
+    // Часть 1: Прогон метода Магнуса по всем 3 задачам на сетке из K шагов
+    // -------------------------------------------------------------------------
+    struct Part1Record {
+        string method;
+        int order = 0;
+        int num_steps = 1;
+        double dt = 0.0;
+        string problem;
+        double global_error = 0.0;
+        bool has_single_omega_err = false;
+        double single_omega_err = 0.0;
         uint64_t flops = 0;
         double time_ms = 0.0;
         bool is_worst = false;
@@ -960,130 +1156,248 @@ namespace {
         }
     };
 
-    // Прогон метода по всем 3 матрицам:
-    // сохраняет ВСЕ 3 прогона в CSV, а в консоль выводит и возвращает только худший по точности
-    SingleRunRecord evaluate_method_on_all_problems(
+    void run_part1_config(
         const string& method_name,
-        int param,
+        int order,
+        int num_steps,
         const vector<BenchmarkProblem>& problems,
-        bool compare_with_omega,
         ofstream& csv,
-        const function<CMatrix(const BenchmarkProblem&)>& runner)
+        const StepOmegaFn& omega_step_fn)
     {
-        vector<SingleRunRecord> runs;
+        vector<Part1Record> runs;
         runs.reserve(problems.size());
 
+        const double dt_nominal = T_TOTAL / static_cast<double>(num_steps);
         size_t worst_idx = 0;
         double max_err = -1.0;
 
         for (size_t i = 0; i < problems.size(); ++i) {
             const auto& prob = problems[i];
-            CMatrix calc_mat;
-            uint64_t single_run_flops = 0;
-            double total_time_ms = 0.0;
 
-            profiling::FlopScope scope; 
-    
-            for (int iter = 0; iter < NUM_ITERS; ++iter) {
-                calc_mat = runner(prob);
-            }
+            // 1) Проверка глобальной точности на [0, T_TOTAL] с машинно-точной экспонентой
+            CMatrix U_curr = utils::eye(N);
+            CMatrix U_next((size_t)N * N, complexd(0.0, 0.0));
+            double single_omega_err = 0.0;
 
-            // Получаем суммарное время и FLOPs за все NUM_ITERS итераций
-            total_time_ms = scope.elapsed_ms();
-            uint64_t total_flops = scope.flops();
+            for (int s = 0; s < num_steps; ++s) {
+                double t0 = 0.0, t1 = 0.0;
+                step_bounds(s, num_steps, t0, t1);
+                CMatrix Om = omega_step_fn(prob, t0, t1);
 
-            const double avg_time_ms = total_time_ms / NUM_ITERS;
-            single_run_flops = total_flops / NUM_ITERS;
-            const CMatrix& ref_mat = compare_with_omega ? prob.Omega_ref : prob.U_ref;
-            const double err = matrix_ops::max_element_diff(calc_mat, ref_mat, N);
+                if (num_steps == 1) {
+                    single_omega_err = matrix_ops::max_element_diff(Om, prob.Omega_ref, N);
+                }
 
-            SingleRunRecord rec;
-            rec.method_name  = method_name;
-            rec.param        = param;
-            rec.problem_name = prob.name;
-            rec.error        = err;
-            rec.flops        = single_run_flops;
-            rec.time_ms      = avg_time_ms;
-            rec.is_worst     = false;
-
-            if (err > max_err) {
-                max_err = err;
-                worst_idx = i;
-            }
-
-            runs.push_back(rec);
-        }
-
-        // Помечаем прогон с худшей точностью
-        runs[worst_idx].is_worst = true;
-
-        // Записываем ВСЕ прогоны (по всем 3 матрицам) в CSV-файл
-        for (const auto& rec : runs) {
-            csv << rec.method_name << ","
-                << rec.param << ","
-                << rec.problem_name << ","
-                << scientific << setprecision(12) << rec.error << ","
-                << rec.flops << ","
-                << rec.time_ms << ","
-                << rec.gflops_per_sec() << ","
-                << (rec.is_worst ? 1 : 0) << "\n";
-        }
-
-        // В консоль выводим ТОЛЬКО худший случай
-        const auto& worst = runs[worst_idx];
-        cout << left << setw(24) << worst.method_name
-             << setw(10) << worst.param
-             << scientific << setprecision(4) << setw(18) << worst.error
-             << defaultfloat << setw(16) << worst.flops
-             << fixed << setprecision(3) << setw(14) << worst.time_ms
-             << fixed << setprecision(2) << setw(12) << worst.gflops_per_sec()
-             << worst.problem_name << "\n";
-
-        return worst;
-    }
-
-    void print_table_header(const string& title, const string& param_col) {
-        cout << "\n========================================================================================================\n";
-        cout << " " << title << " (Console shows WORST-CASE only)\n";
-        cout << "========================================================================================================\n";
-        cout << left << setw(24) << "Method"
-             << setw(10) << param_col
-             << setw(18) << "Worst Error"
-             << setw(16) << "FLOPs (PAPI)"
-             << setw(14) << "Time (ms)"
-             << setw(12) << "GFLOP/s"
-             << "Worst Matrix\n";
-        cout << "--------------------------------------------------------------------------------------------------------\n";
-    }
-
-    void print_fastest_method(const vector<SingleRunRecord>& worst_results, double target_tol, const string& stage_name) {
-        const SingleRunRecord* best_by_flops = nullptr;
-        for (const auto& r : worst_results) {
-            if (r.error <= target_tol) {
-                if (!best_by_flops || r.flops < best_by_flops->flops) {
-                    best_by_flops = &r;
+                CMatrix E_s = matrix_ops::expm_cheb(Om, N, EXACT_CHEB_ORDER);
+                if (s == 0) {
+                    U_curr = std::move(E_s);
+                } else {
+                    // Строго левое умножение: U(t_{s+1}) = exp(Omega_s) * U(t_s)
+                    matrix_ops::matmul(E_s, U_curr, U_next, N);
+                    std::swap(U_curr, U_next);
                 }
             }
+
+            const double global_err = matrix_ops::max_element_diff(U_curr, prob.U_ref, N);
+
+            // 2) Профилирование ТОЛЬКО вычисления Omega на K шагах
+            volatile double sink_real = 0.0;
+            profiling::FlopScope scope;
+            for (int iter = 0; iter < NUM_ITERS; ++iter) {
+                for (int s = 0; s < num_steps; ++s) {
+                    double t0 = 0.0, t1 = 0.0;
+                    step_bounds(s, num_steps, t0, t1);
+                    CMatrix Om = omega_step_fn(prob, t0, t1);
+                    sink_real += Om[0].real();
+                }
+            }
+            const double avg_time_ms = scope.elapsed_ms() / static_cast<double>(NUM_ITERS);
+            const uint64_t avg_flops = scope.flops() / static_cast<uint64_t>(NUM_ITERS);
+            (void)sink_real;
+
+            Part1Record rec;
+            rec.method = method_name;
+            rec.order = order;
+            rec.num_steps = num_steps;
+            rec.dt = dt_nominal;
+            rec.problem = prob.name;
+            rec.global_error = global_err;
+            rec.has_single_omega_err = (num_steps == 1);
+            rec.single_omega_err = single_omega_err;
+            rec.flops = avg_flops;
+            rec.time_ms = avg_time_ms;
+
+            if (global_err > max_err) {
+                max_err = global_err;
+                worst_idx = i;
+            }
+            runs.push_back(std::move(rec));
         }
 
-        cout << "--------------------------------------------------------------------------------------------------------\n";
-        if (best_by_flops) {
-            cout << "[RESULT - " << stage_name << "] Leader in terms of minimum FLOPs (for accuracy <= "
-                 << scientific << setprecision(1) << target_tol << "): "
-                 << best_by_flops->method_name << " (param=" << best_by_flops->param << ")"
-                 << " -> " << best_by_flops->flops << " FLOPs, Worst Error = "
-                 << scientific << setprecision(3) << best_by_flops->error
-                 << ", Time = " << fixed << setprecision(3) << best_by_flops->time_ms << " ms"
-                 << " (on " << best_by_flops->problem_name << ")\n";
-        } else {
-            cout << "[RESULT - " << stage_name << "] None of the methods reached the threshold. " << target_tol << "\n";
+        runs[worst_idx].is_worst = true;
+
+        for (const auto& rec : runs) {
+            csv << rec.method << ","
+                << rec.order << ","
+                << rec.num_steps << ","
+                << scientific << setprecision(6) << rec.dt << ","
+                << rec.problem << ","
+                << scientific << setprecision(12) << rec.global_error << ",";
+            if (rec.has_single_omega_err) {
+                csv << scientific << setprecision(12) << rec.single_omega_err;
+            }
+            csv << ","
+                << rec.flops << ","
+                << fixed << setprecision(6) << rec.time_ms << ","
+                << fixed << setprecision(3) << rec.gflops_per_sec() << ","
+                << (rec.is_worst ? 1 : 0) << "\n";
         }
+        csv.flush();
+
+        const auto& w = runs[worst_idx];
+        cout << left << setw(14) << w.method
+             << setw(6) << w.order
+             << setw(7) << w.num_steps
+             << scientific << setprecision(1) << setw(10) << w.dt
+             << scientific << setprecision(4) << setw(15) << w.global_error
+             << defaultfloat << setw(16) << w.flops
+             << fixed << setprecision(3) << setw(12) << w.time_ms
+             << fixed << setprecision(2) << setw(9) << w.gflops_per_sec()
+             << w.problem << "\n";
+    }
+
+    // -------------------------------------------------------------------------
+    // Часть 2: Прогон связки (Magnus + Chebyshev) на 2D-сетке (dt, M)
+    // -------------------------------------------------------------------------
+    struct Part2Record {
+        string method;
+        int magnus_order = 0;
+        int num_steps = 1;
+        double dt = 0.0;
+        int cheb_order = 0;
+        string problem;
+        double global_error = 0.0;
+        double unitarity_defect = 0.0;
+        uint64_t flops = 0;
+        double time_ms = 0.0;
+        bool is_worst = false;
+
+        double gflops_per_sec() const {
+            return (time_ms > 0.0) ? (static_cast<double>(flops) * 1e-6 / time_ms) : 0.0;
+        }
+    };
+
+    void run_part2_config(
+        const string& method_name,
+        int magnus_order,
+        int num_steps,
+        int cheb_order,
+        const vector<BenchmarkProblem>& problems,
+        const CMatrix& eye_N,
+        ofstream& csv,
+        const StepOmegaFn& omega_step_fn)
+    {
+        vector<Part2Record> runs;
+        runs.reserve(problems.size());
+
+        const double dt_nominal = T_TOTAL / static_cast<double>(num_steps);
+        size_t worst_idx = 0;
+        double max_err = -1.0;
+
+        for (size_t i = 0; i < problems.size(); ++i) {
+            const auto& prob = problems[i];
+            CMatrix U_final;
+
+            profiling::FlopScope scope;
+            for (int iter = 0; iter < NUM_ITERS; ++iter) {
+                CMatrix U_curr = utils::eye(N);
+                CMatrix U_next((size_t)N * N, complexd(0.0, 0.0));
+
+                for (int s = 0; s < num_steps; ++s) {
+                    double t0 = 0.0, t1 = 0.0;
+                    step_bounds(s, num_steps, t0, t1);
+                    CMatrix Om = omega_step_fn(prob, t0, t1);
+                    CMatrix E_s = matrix_ops::expm_cheb(Om, N, cheb_order);
+
+                    if (s == 0) {
+                        U_curr = std::move(E_s);
+                    } else {
+                        matrix_ops::matmul(E_s, U_curr, U_next, N);
+                        std::swap(U_curr, U_next);
+                    }
+                }
+                U_final = std::move(U_curr);
+            }
+            const double avg_time_ms = scope.elapsed_ms() / static_cast<double>(NUM_ITERS);
+            const uint64_t avg_flops = scope.flops() / static_cast<uint64_t>(NUM_ITERS);
+
+            const double global_err = matrix_ops::max_element_diff(U_final, prob.U_ref, N);
+
+            // Дефект унитарности max |U^* U - I| (вне FlopScope)
+            CMatrix Uh = matrix_ops::dagger(U_final, N);
+            CMatrix UhU((size_t)N * N, complexd(0.0, 0.0));
+            matrix_ops::matmul(Uh, U_final, UhU, N);
+            const double unit_defect = matrix_ops::max_element_diff(UhU, eye_N, N);
+
+            Part2Record rec;
+            rec.method = method_name;
+            rec.magnus_order = magnus_order;
+            rec.num_steps = num_steps;
+            rec.dt = dt_nominal;
+            rec.cheb_order = cheb_order;
+            rec.problem = prob.name;
+            rec.global_error = global_err;
+            rec.unitarity_defect = unit_defect;
+            rec.flops = avg_flops;
+            rec.time_ms = avg_time_ms;
+
+            if (global_err > max_err) {
+                max_err = global_err;
+                worst_idx = i;
+            }
+            runs.push_back(std::move(rec));
+        }
+
+        runs[worst_idx].is_worst = true;
+
+        for (const auto& rec : runs) {
+            csv << rec.method << ","
+                << rec.magnus_order << ","
+                << rec.num_steps << ","
+                << scientific << setprecision(6) << rec.dt << ","
+                << rec.cheb_order << ","
+                << rec.problem << ","
+                << scientific << setprecision(12) << rec.global_error << ","
+                << scientific << setprecision(12) << rec.unitarity_defect << ","
+                << rec.flops << ","
+                << fixed << setprecision(6) << rec.time_ms << ","
+                << fixed << setprecision(3) << rec.gflops_per_sec() << ","
+                << (rec.is_worst ? 1 : 0) << "\n";
+        }
+        csv.flush();
+
+        const auto& w = runs[worst_idx];
+        cout << left << setw(22) << w.method
+             << setw(7) << w.num_steps
+             << scientific << setprecision(1) << setw(10) << w.dt
+             << setw(6) << w.cheb_order
+             << scientific << setprecision(4) << setw(15) << w.global_error
+             << defaultfloat << setw(16) << w.flops
+             << fixed << setprecision(3) << setw(12) << w.time_ms
+             << w.problem << "\n";
     }
 
 } // namespace
 
-int main() {
+int main(int argc, char* argv[]) {
     std::setlocale(LC_ALL, "Russian");
+
+    bool force_rebuild = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--rebuild-ref") == 0) {
+            force_rebuild = true;
+        }
+    }
 
     mkl_set_dynamic(0);
     omp_set_dynamic(0);
@@ -1091,157 +1405,155 @@ int main() {
     omp_set_num_threads(1);
 
     cout << "========================================================================================================\n";
-    cout << " EXPERIMENT: Accuracy vs FLOPs across 3 Constant Matrix Problems (N = " << N << ", h = " << H_STEP << ")\n";
+    cout << " EXPERIMENT: Global Error vs dt & Chebyshev Order on [0, " << T_TOTAL
+         << "] (N = " << N << ", NUM_ITERS = " << NUM_ITERS << ")\n";
     cout << "========================================================================================================\n";
 
     // -------------------------------------------------------------------------
-    // 1. Генерация 3 тестовых задач (постоянных матриц с разными свойствами)
+    // 1. Загрузка или генерация 3 задач и эталонов
     // -------------------------------------------------------------------------
-    vector<BenchmarkProblem> problems(3);
+    vector<BenchmarkProblem> problems = load_or_generate_problems(force_rebuild);
+    const CMatrix eye_N = utils::eye(N);
 
-    // Задача 1: Хорошо обусловленная спектральная матрица (kappa = 10)
-    {
-        auto [H0_spec10, V10, D10] = utils::generate_spectral_matrix(N, 10.0, 10.0);
-        problems[0].name = "1_WellCond_Kappa10";
-        problems[0].H0   = H0_spec10;
-        problems[0].Hmod = utils::generate_hermitian_matrix(N, 2.0);
+    cout << "\n[SANITY CHECK] Norms and exact-expm accuracy (Cheb M=" << EXACT_CHEB_ORDER << " vs Pade):\n";
+    for (const auto& p : problems) {
+        CMatrix U_check = matrix_ops::expm_cheb(p.Omega_ref, N, EXACT_CHEB_ORDER);
+        double diff = matrix_ops::max_element_diff(U_check, p.U_ref, N);
+        double om_norm = matrix_ops::mat_one_norm(p.Omega_ref, N);
+        cout << "  " << left << setw(22) << p.name
+             << " ||Omega_ref||_1 = " << fixed << setprecision(4) << setw(10) << om_norm
+             << " |Cheb(" << EXACT_CHEB_ORDER << ") - Pade|_max = " << scientific << setprecision(3) << diff << "\n";
     }
 
-    // Задача 2: Пара матриц с усиленной некоммутативностью ([H0, Hmod] велик)
-    {
-        auto [H_ddA, H_ddB] = utils::generate_hermitian_pair_dd(N, 1.0, 1.0, 8.0, 30.0);
-        problems[1].name = "2_HighNonComm_DD";
-        problems[1].H0   = H_ddA;
-        problems[1].Hmod = H_ddB;
-    }
+    // Хелперы для генерации одного шага Omega на [t0, t1]
+    auto make_classic_fn = [](int k) -> StepOmegaFn {
+        return [k](const BenchmarkProblem& p, double t0, double t1) {
+            const double inner_dt = (t1 - t0) / static_cast<double>(INNER_SUB_DEFAULT);
+            return magnus_classic(t0, t1, inner_dt, N, p.H0, p.Hmod, EPS0, W, k);
+        };
+    };
 
-    // Задача 3: Жесткая спектральная матрица (kappa = 10000)
-    {
-        auto [H0_spec10k, V10k, D10k] = utils::generate_spectral_matrix(N, 10000.0, 50.0);
-        problems[2].name = "3_Stiff_Kappa10000";
-        problems[2].H0   = H0_spec10k;
-        problems[2].Hmod = utils::generate_hermitian_matrix(N, 5.0);
-    }
+    auto make_acc_fn = [](int k) -> StepOmegaFn {
+        return [k](const BenchmarkProblem& p, double t0, double t1) {
+            const int sub_intervals = (k >= 6) ? 6 : 2;
+            const double sub_dt = (t1 - t0) / static_cast<double>(sub_intervals);
+            auto samples = generate_samples(t0, t1, sub_dt, N, p.H0, p.Hmod, EPS0, W);
+            const double actual_sub_dt = (t1 - t0) / static_cast<double>(samples.size() - 1);
+            return magnus_ACC(samples, actual_sub_dt, N, k);
+        };
+    };
 
-    // Вычисление эталонов Omega_ref и U_ref (выполняются без FlopScope, чтобы не засорять счетчик)
-    const double ref_dt = H_STEP * 1e-3;
-    for (auto& prob : problems) {
-        cout << "Preparing reference Omega_ref and U_ref for [" << prob.name << "]...\n";
-        prob.H0_anti   = matrix_ops::mat_scale(prob.H0, complexd(0.0, -1.0));
-        prob.Hmod_anti = matrix_ops::mat_scale(prob.Hmod, complexd(0.0, -1.0));
-        prob.Omega_ref = magnus_expansion(0.0, H_STEP, ref_dt, N, prob.H0, prob.Hmod, EPS0, W, 10);
-        prob.U_ref     = matrix_ops::expm_pade_eigen(prob.Omega_ref, N);
-    }
+    auto make_recursive_fn = [](int k) -> StepOmegaFn {
+        return [k](const BenchmarkProblem& p, double t0, double t1) {
+            const double inner_dt = (t1 - t0) / static_cast<double>(INNER_SUB_DEFAULT);
+            return magnus_expansion(t0, t1, inner_dt, N, p.H0, p.Hmod, EPS0, W, k);
+        };
+    };
+
+    StepOmegaFn formula314_fn = [](const BenchmarkProblem& p, double t0, double t1) {
+        const double inner_dt = (t1 - t0) / static_cast<double>(INNER_SUB_DEFAULT);
+        return magnus_3_14(t0, t1, inner_dt, N, p.H0_anti, p.Hmod_anti, EPS0, W);
+    };
 
     // -------------------------------------------------------------------------
-    // 2. ЧАСТЬ 1: Точность и FLOPs при вычислении матрицы Омега
+    // 2. ЧАСТЬ 1: Точность и FLOPs методов Магнуса в зависимости от dt
     // -------------------------------------------------------------------------
-    const string omega_csv_path = utils::results_path("experiment_flops_omega.csv");
-    ofstream omega_csv(omega_csv_path);
-    omega_csv << "Method,Param,Problem,Error,FLOPs,Time_ms,GFLOPS_s,Is_Worst\n";
+    const string part1_csv_path = utils::results_path("experiment_part1_omega_dt.csv");
+    ofstream part1_csv(part1_csv_path);
+    part1_csv << "Method,Order,NumSteps,dt,Problem,GlobalError,SingleStepOmegaError,FLOPs,Time_ms,GFLOPS_s,Is_Worst\n";
 
-    print_table_header("PART 1: Omega Calculation (Error vs FLOPs)", "Order K");
-
-    vector<SingleRunRecord> omega_worst_results;
-    const double inner_dt = H_STEP / 6.0; // 7 узлов на шаге H_STEP
+    cout << "\n========================================================================================================\n";
+    cout << " PART 1: Magnus Methods vs dt on [0, " << T_TOTAL << "] (Console shows WORST-CASE only)\n";
+    cout << "========================================================================================================\n";
+    cout << left << setw(14) << "Method"
+         << setw(6) << "Ord"
+         << setw(7) << "Steps"
+         << setw(10) << "dt"
+         << setw(15) << "Worst Error"
+         << setw(16) << "FLOPs (Omega)"
+         << setw(12) << "Time (ms)"
+         << setw(9) << "GFLOP/s"
+         << "Worst Matrix\n";
+    cout << "--------------------------------------------------------------------------------------------------------\n";
 
     // 2.1. Classic Magnus (k = 1, 2, 3)
     for (int k : {1, 2, 3}) {
-        auto worst = evaluate_method_on_all_problems("Classic", k, problems, true, omega_csv, [&](const BenchmarkProblem& p) {
-            return magnus_classic(0.0, H_STEP, inner_dt, N, p.H0, p.Hmod, EPS0, W, k);
-        });
-        omega_worst_results.push_back(worst);
+        auto fn = make_classic_fn(k);
+        for (int K : STEP_COUNTS) {
+            run_part1_config("Classic", k, K, problems, part1_csv, fn);
+        }
     }
 
-    // 2.2. ACC Magnus (k = 1, 2, 5, 6)
-    for (int k : {1, 2, 5, 6}) {
-        auto worst = evaluate_method_on_all_problems("ACC", k, problems, true, omega_csv, [&](const BenchmarkProblem& p) {
-            double sub_dt = (k >= 6) ? (H_STEP / 6.0) : ((k >= 5) ? (H_STEP / 4.0) : (H_STEP / 2.0));
-            auto samples = generate_samples(0.0, H_STEP, sub_dt, N, p.H0, p.Hmod, EPS0, W);
-            return magnus_ACC(samples, sub_dt, N, k);
-        });
-        omega_worst_results.push_back(worst);
+    // 2.2. ACC Magnus (k = 1, 4, 6 — 5-й убран, 4-й добавлен, дубль 2-го убран)
+    for (int k : {1, 4, 6}) {
+        auto fn = make_acc_fn(k);
+        for (int K : STEP_COUNTS) {
+            run_part1_config("ACC", k, K, problems, part1_csv, fn);
+        }
     }
 
     // 2.3. Recursive Magnus (k = 1..6)
     for (int k : {1, 2, 3, 4, 5, 6}) {
-        auto worst = evaluate_method_on_all_problems("Recursive", k, problems, true, omega_csv, [&](const BenchmarkProblem& p) {
-            return magnus_expansion(0.0, H_STEP, inner_dt, N, p.H0, p.Hmod, EPS0, W, k);
-        });
-        omega_worst_results.push_back(worst);
+        auto fn = make_recursive_fn(k);
+        for (int K : STEP_COUNTS) {
+            run_part1_config("Recursive", k, K, problems, part1_csv, fn);
+        }
     }
 
-    // 2.4. Formula 3.14 (magnus_3_14)
-    {
-        auto worst = evaluate_method_on_all_problems("Formula314", 4, problems, true, omega_csv, [&](const BenchmarkProblem& p) {
-            return magnus_3_14(0.0, H_STEP, inner_dt, N, p.H0_anti, p.Hmod_anti, EPS0, W);
-        });
-        omega_worst_results.push_back(worst);
+    // 2.4. Formula 3.14 (только в Части 1)
+    for (int K : STEP_COUNTS) {
+        run_part1_config("Formula314", 4, K, problems, part1_csv, formula314_fn);
     }
 
-    omega_csv.close();
-    print_fastest_method(omega_worst_results, 1e-9, "Omega calculation");
+    part1_csv.close();
 
     // -------------------------------------------------------------------------
-    // 3. ЧАСТЬ 2: Точность и FLOPs выполнения всего шага (Омега + Экспонента)
+    // 3. ЧАСТЬ 2: 2D-сетка (dt x M) для ACC4+Cheb, ACC6+Cheb, Recursive4+Cheb
     // -------------------------------------------------------------------------
-    const string step_csv_path = utils::results_path("experiment_flops_step.csv");
-    ofstream step_csv(step_csv_path);
-    step_csv << "Method,Param,Problem,Error,FLOPs,Time_ms,GFLOPS_s,Is_Worst\n";
+    const string part2_csv_path = utils::results_path("experiment_part2_step_dt_cheb.csv");
+    ofstream part2_csv(part2_csv_path);
+    part2_csv << "Method,MagnusOrder,NumSteps,dt,ChebOrder,Problem,GlobalError,UnitarityDefect,FLOPs,Time_ms,GFLOPS_s,Is_Worst\n";
 
-    print_table_header("PART 2: Full Step Execution Omega + Chebyshev / RK4 (Error vs FLOPs)", "Param");
+    cout << "\n========================================================================================================\n";
+    cout << " PART 2: Full Propagation (Magnus + Chebyshev) vs (dt, M) on [0, " << T_TOTAL << "] (WORST-CASE)\n";
+    cout << "========================================================================================================\n";
+    cout << left << setw(22) << "Method"
+         << setw(7) << "Steps"
+         << setw(10) << "dt"
+         << setw(6) << "M"
+         << setw(15) << "Worst Error"
+         << setw(16) << "FLOPs (Total)"
+         << setw(12) << "Time (ms)"
+         << "Worst Matrix\n";
+    cout << "--------------------------------------------------------------------------------------------------------\n";
 
-    vector<SingleRunRecord> step_worst_results;
-    const vector<int> cheb_orders = { 2, 4, 6, 8, 10, 12, 15, 20 };
+    struct Part2MethodSpec {
+        string name;
+        int magnus_order;
+        StepOmegaFn omega_fn;
+    };
 
-    // 3.1. ACC (4-й порядок) + Chebyshev(M)
-    for (int M : cheb_orders) {
-        auto worst = evaluate_method_on_all_problems("ACC4+Chebyshev", M, problems, false, step_csv, [&](const BenchmarkProblem& p) {
-            double sub_dt = H_STEP / 2.0;
-            auto samples = generate_samples(0.0, H_STEP, sub_dt, N, p.H0, p.Hmod, EPS0, W);
-            CMatrix Om = magnus_ACC(samples, sub_dt, N, 4);
-            return matrix_ops::expm_cheb(Om, N, M);
-        });
-        step_worst_results.push_back(worst);
-    }
+    vector<Part2MethodSpec> part2_methods = {
+        { "ACC4+Chebyshev",       4, make_acc_fn(4) },
+        { "ACC6+Chebyshev",       6, make_acc_fn(6) },
+        { "Recursive4+Chebyshev", 4, make_recursive_fn(4) }
+    };
 
-    // 3.2. Formula 3.14 + Chebyshev(M)
-    for (int M : cheb_orders) {
-        auto worst = evaluate_method_on_all_problems("Formula314+Chebyshev", M, problems, false, step_csv, [&](const BenchmarkProblem& p) {
-            CMatrix Om = magnus_3_14(0.0, H_STEP, inner_dt, N, p.H0_anti, p.Hmod_anti, EPS0, W);
-            return matrix_ops::expm_cheb(Om, N, M);
-        });
-        step_worst_results.push_back(worst);
-    }
-
-    // 3.3. Recursive Magnus (k=4) + Chebyshev(M)
-    for (int M : cheb_orders) {
-        auto worst = evaluate_method_on_all_problems("Recursive4+Chebyshev", M, problems, false, step_csv, [&](const BenchmarkProblem& p) {
-            CMatrix Om = magnus_expansion(0.0, H_STEP, inner_dt, N, p.H0, p.Hmod, EPS0, W, 4);
-            return matrix_ops::expm_cheb(Om, N, M);
-        });
-        step_worst_results.push_back(worst);
-    }
-
-    // 3.4. Runge-Kutta 4 (дробление шага H_STEP на substeps подшагов)
-    for (int substeps : {1, 2, 4, 8, 16, 32, 64}) {
-        auto worst = evaluate_method_on_all_problems("RK4_Substeps", substeps, problems, false, step_csv, [&](const BenchmarkProblem& p) {
-            CMatrix U = utils::eye(N);
-            double dt_rk = H_STEP / substeps;
-            for (int s = 0; s < substeps; ++s) {
-                U = runge_kutta_simple::runge_kutta_step(s * dt_rk, p.H0, p.Hmod, W, U, dt_rk, N);
+    for (const auto& spec : part2_methods) {
+        for (int K : STEP_COUNTS) {
+            for (int M : CHEB_ORDERS) {
+                run_part2_config(spec.name, spec.magnus_order, K, M, problems, eye_N, part2_csv, spec.omega_fn);
             }
-            return U;
-        });
-        step_worst_results.push_back(worst);
+        }
     }
 
-    step_csv.close();
-    print_fastest_method(step_worst_results, 1e-9, "full step U(h)");
+    part2_csv.close();
 
-    cout << "\nAll runs (across all 3 matrices) saved to CSV files:\n"
-         << "  1) " << omega_csv_path << "\n"
-         << "  2) " << step_csv_path << "\n";
+    cout << "\n========================================================================================================\n";
+    cout << "DONE. Raw datasets saved for Excel analysis:\n"
+         << "  Part 1: " << part1_csv_path << "\n"
+         << "  Part 2: " << part2_csv_path << "\n"
+         << "========================================================================================================\n";
 
     return 0;
 }
