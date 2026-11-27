@@ -933,21 +933,23 @@ namespace {
     // -------------------------------------------------------------------------
     constexpr int N = 256;               // Размерность матриц N x N
     constexpr int NUM_ITERS = 3;         // Число прогонов для усреднения времени/FLOPs
-    constexpr double T_TOTAL = 1e-3;     // Фиксированный отрезок интегрирования [0, 0.001]
-    constexpr double EPS0 = 1.0;         // Амплитуда модуляции f(t) = EPS0 * cos(W * t)
-    constexpr double W = 2.0 * PI;       // Частота модуляции (период T = 1.0)
+    constexpr double T_TOTAL = 3e-3;     // Фиксированный отрезок интегрирования [0, 0.003]
+    constexpr double EPS0 = 1.0;         // Амплитуда модуляции f(t) = EPS0 * sin(W * t)
+    constexpr double W = 100.0 * PI;     // Частота модуляции (период T_mod = 0.02, фаза на T_TOTAL = 0.3*pi)
 
-    // Параметры эталонного расчета
-    constexpr double REF_DT = T_TOTAL * 1e-3; // 1e-6 (1000 интервалов)
-    constexpr int REF_MAGNUS_ORDER = 10;
-    constexpr int EXACT_CHEB_ORDER = 32;      // Машинно-точная экспонента для изоляции ошибки Omega
+    // Параметры эталонного расчета (четное число интервалов -> чистый Симпсон 1/3)
+    constexpr int REF_INTERVALS = 1200;
+    constexpr double REF_DT = T_TOTAL / static_cast<double>(REF_INTERVALS); // 2e-6
+    constexpr int REF_MAGNUS_ORDER = 8;
+    constexpr int EXACT_CHEB_ORDER = 32; // Машинно-точная экспонента для изоляции ошибки Omega
 
-    // Внутреннее разбиение одного шага [t_s, t_{s+1}] для Classic / Recursive / Formula314
+    // Внутреннее разбиение одного шага [t_s, t_{s+1}] для Classic / Recursive
     // 6 подынтервалов = 7 узлов (равные условия с ACC 6 и точная 4-го порядка ветка Симпсона)
     constexpr int INNER_SUB_DEFAULT = 6;
 
-    // Точные целые числа шагов K на [0, 0.001]: dt = 0.001 / K (от 1e-3 до 1e-6)
-    const vector<int> STEP_COUNTS = { 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000 };
+    // Точные целые числа шагов K на [0, 0.003] (K = 1000 исключен):
+    // dt = 3e-3, 1.5e-3, 6e-4, 3e-4, 1.5e-4, 6e-5, 3e-5, 1.5e-5, 6e-6
+    const vector<int> STEP_COUNTS = { 1, 2, 5, 10, 20, 50, 100, 200, 500 };
 
     // Порядки разложения Чебышева для Части 2
     const vector<int> CHEB_ORDERS = { 2, 3, 4, 6, 8, 10, 12, 15, 20 };
@@ -959,15 +961,13 @@ namespace {
         string name;
         CMatrix H0;
         CMatrix Hmod;
-        CMatrix H0_anti;   // -i * H0 (для magnus_3_14)
-        CMatrix Hmod_anti; // -i * Hmod (для magnus_3_14)
         CMatrix Omega_ref; // Эталон Omega(0, T_TOTAL)
         CMatrix U_ref;     // Эталон U(T_TOTAL) = exp(Omega_ref)
     };
 
     struct ReferenceCacheHeader {
         uint64_t magic = 0x4D41474E55535246ULL; // "MAGNUSRF"
-        uint32_t version = 3;                   // v3: Симпсон в эталоне + скорректированная 2_HighNonComm_DD
+        uint32_t version = 4;                   // v4: sin(100*pi*t), T=3e-3, REF_INTERVALS=1500
         int32_t N = 0;
         int32_t ref_order = 0;
         int32_t num_problems = 0;
@@ -1058,16 +1058,13 @@ namespace {
             if (!read_matrix_bin(in, problems[i].Hmod, elems)) return false;
             if (!read_matrix_bin(in, problems[i].Omega_ref, elems)) return false;
             if (!read_matrix_bin(in, problems[i].U_ref, elems)) return false;
-
-            problems[i].H0_anti = matrix_ops::mat_scale(problems[i].H0, complexd(0.0, -1.0));
-            problems[i].Hmod_anti = matrix_ops::mat_scale(problems[i].Hmod, complexd(0.0, -1.0));
         }
 
         return true;
     }
 
     vector<BenchmarkProblem> load_or_generate_problems(bool force_rebuild) {
-        const string cache_path = utils::results_path("reference_cache_N256_T1e-3.bin");
+        const string cache_path = utils::results_path("reference_cache_N256_T3e-3_sin100pi.bin");
         vector<BenchmarkProblem> problems;
 
         if (!force_rebuild && load_reference_cache(cache_path, problems)) {
@@ -1086,8 +1083,7 @@ namespace {
             problems[0].Hmod = utils::generate_hermitian_matrix(N, 2.0);
         }
 
-        // Задача 2: Сильно некоммутирующая DD-пара со скорректированной нормой под [0, 0.001]
-        // (||H0||_2 ~ 80, ||Hmod||_2 ~ 390 => T * ||H||_2 ~ 0.47 << pi)
+        // Задача 2: Сильно некоммутирующая DD-пара со скорректированной нормой
         {
             auto [H_ddA, H_ddB] = utils::generate_hermitian_pair_dd(N, 0.25, 0.25, 6.0, 15.0);
             problems[1].name = "2_HighNonComm_DD";
@@ -1105,9 +1101,8 @@ namespace {
 
         for (auto& prob : problems) {
             cout << "  Computing Omega_ref (Recursive order=" << REF_MAGNUS_ORDER
-                 << ", dt=" << REF_DT << ") and U_ref (Pade) for [" << prob.name << "]...\n";
-            prob.H0_anti = matrix_ops::mat_scale(prob.H0, complexd(0.0, -1.0));
-            prob.Hmod_anti = matrix_ops::mat_scale(prob.Hmod, complexd(0.0, -1.0));
+                 << ", intervals=" << REF_INTERVALS << ", dt=" << scientific << setprecision(2) << REF_DT
+                 << ") and U_ref (Pade) for [" << prob.name << "]...\n";
             prob.Omega_ref = magnus_expansion(0.0, T_TOTAL, REF_DT, N, prob.H0, prob.Hmod, EPS0, W, REF_MAGNUS_ORDER);
             prob.U_ref = matrix_ops::expm_pade_eigen(prob.Omega_ref, N);
         }
@@ -1242,9 +1237,9 @@ namespace {
                 << rec.num_steps << ","
                 << scientific << setprecision(6) << rec.dt << ","
                 << rec.problem << ","
-                << scientific << setprecision(12) << rec.global_error << ",";
+                << scientific << setprecision(16) << rec.global_error << ",";
             if (rec.has_single_omega_err) {
-                csv << scientific << setprecision(12) << rec.single_omega_err;
+                csv << scientific << setprecision(16) << rec.single_omega_err;
             }
             csv << ","
                 << rec.flops << ","
@@ -1255,11 +1250,11 @@ namespace {
         csv.flush();
 
         const auto& w = runs[worst_idx];
-        cout << left << setw(14) << w.method
-             << setw(6) << w.order
-             << setw(7) << w.num_steps
-             << scientific << setprecision(1) << setw(10) << w.dt
-             << scientific << setprecision(4) << setw(15) << w.global_error
+        cout << left << setw(12) << w.method
+             << setw(5) << w.order
+             << setw(6) << w.num_steps
+             << scientific << setprecision(2) << setw(11) << w.dt
+             << scientific << setprecision(16) << setw(25) << w.global_error
              << defaultfloat << setw(16) << w.flops
              << fixed << setprecision(3) << setw(12) << w.time_ms
              << fixed << setprecision(2) << setw(9) << w.gflops_per_sec()
@@ -1367,8 +1362,8 @@ namespace {
                 << scientific << setprecision(6) << rec.dt << ","
                 << rec.cheb_order << ","
                 << rec.problem << ","
-                << scientific << setprecision(12) << rec.global_error << ","
-                << scientific << setprecision(12) << rec.unitarity_defect << ","
+                << scientific << setprecision(16) << rec.global_error << ","
+                << scientific << setprecision(16) << rec.unitarity_defect << ","
                 << rec.flops << ","
                 << fixed << setprecision(6) << rec.time_ms << ","
                 << fixed << setprecision(3) << rec.gflops_per_sec() << ","
@@ -1378,10 +1373,10 @@ namespace {
 
         const auto& w = runs[worst_idx];
         cout << left << setw(22) << w.method
-             << setw(7) << w.num_steps
-             << scientific << setprecision(1) << setw(10) << w.dt
-             << setw(6) << w.cheb_order
-             << scientific << setprecision(4) << setw(15) << w.global_error
+             << setw(6) << w.num_steps
+             << scientific << setprecision(2) << setw(11) << w.dt
+             << setw(5) << w.cheb_order
+             << scientific << setprecision(16) << setw(25) << w.global_error
              << defaultfloat << setw(16) << w.flops
              << fixed << setprecision(3) << setw(12) << w.time_ms
              << w.problem << "\n";
@@ -1401,29 +1396,21 @@ int main(int argc, char* argv[]) {
 
     mkl_set_dynamic(0);
     omp_set_dynamic(0);
-    mkl_set_num_threads(1);
-    omp_set_num_threads(1);
 
-    cout << "========================================================================================================\n";
-    cout << " EXPERIMENT: Global Error vs dt & Chebyshev Order on [0, " << T_TOTAL
-         << "] (N = " << N << ", NUM_ITERS = " << NUM_ITERS << ")\n";
-    cout << "========================================================================================================\n";
+    cout << "======================================================================================================================\n";
+    cout << " EXPERIMENT: Global Error vs dt & Chebyshev Order on [0, " << fixed << setprecision(4) << T_TOTAL
+         << "], f(t) = sin(100*pi*t) (N = " << N << ", NUM_ITERS = " << NUM_ITERS << ")\n";
+    cout << "======================================================================================================================\n";
 
     // -------------------------------------------------------------------------
     // 1. Загрузка или генерация 3 задач и эталонов
     // -------------------------------------------------------------------------
     vector<BenchmarkProblem> problems = load_or_generate_problems(force_rebuild);
-    const CMatrix eye_N = utils::eye(N);
 
-    cout << "\n[SANITY CHECK] Norms and exact-expm accuracy (Cheb M=" << EXACT_CHEB_ORDER << " vs Pade):\n";
-    for (const auto& p : problems) {
-        CMatrix U_check = matrix_ops::expm_cheb(p.Omega_ref, N, EXACT_CHEB_ORDER);
-        double diff = matrix_ops::max_element_diff(U_check, p.U_ref, N);
-        double om_norm = matrix_ops::mat_one_norm(p.Omega_ref, N);
-        cout << "  " << left << setw(22) << p.name
-             << " ||Omega_ref||_1 = " << fixed << setprecision(4) << setw(10) << om_norm
-             << " |Cheb(" << EXACT_CHEB_ORDER << ") - Pade|_max = " << scientific << setprecision(3) << diff << "\n";
-    }
+    mkl_set_num_threads(1);
+    omp_set_num_threads(1);
+
+    const CMatrix eye_N = utils::eye(N);
 
     // Хелперы для генерации одного шага Omega на [t0, t1]
     auto make_classic_fn = [](int k) -> StepOmegaFn {
@@ -1450,31 +1437,59 @@ int main(int argc, char* argv[]) {
         };
     };
 
-    StepOmegaFn formula314_fn = [](const BenchmarkProblem& p, double t0, double t1) {
-        const double inner_dt = (t1 - t0) / static_cast<double>(INNER_SUB_DEFAULT);
-        return magnus_3_14(t0, t1, inner_dt, N, p.H0_anti, p.Hmod_anti, EPS0, W);
-    };
+    // Контроль норм, точности Cheb(32) vs Pade и независимая проверка U_ref против ACC6 (40 шагов)
+    auto acc6_check_fn = make_acc_fn(6);
+    constexpr int CHECK_STEPS = 40;
+    cout << "\n[SANITY CHECK] Norms, exact-expm (Cheb M=" << EXACT_CHEB_ORDER
+         << " vs Pade), and U_ref cross-check (vs ACC6 x " << CHECK_STEPS << "):\n";
+    for (const auto& p : problems) {
+        CMatrix U_cheb = matrix_ops::expm_cheb(p.Omega_ref, N, EXACT_CHEB_ORDER);
+        const double diff_expm = matrix_ops::max_element_diff(U_cheb, p.U_ref, N);
+        const double om_norm = matrix_ops::mat_one_norm(p.Omega_ref, N);
+
+        CMatrix U_acc = utils::eye(N);
+        CMatrix U_tmp((size_t)N * N, complexd(0.0, 0.0));
+        for (int s = 0; s < CHECK_STEPS; ++s) {
+            double t0 = 0.0, t1 = 0.0;
+            step_bounds(s, CHECK_STEPS, t0, t1);
+            CMatrix Om = acc6_check_fn(p, t0, t1);
+            CMatrix E_s = matrix_ops::expm_cheb(Om, N, EXACT_CHEB_ORDER);
+            if (s == 0) {
+                U_acc = std::move(E_s);
+            } else {
+                matrix_ops::matmul(E_s, U_acc, U_tmp, N);
+                std::swap(U_acc, U_tmp);
+            }
+        }
+        const double diff_ref = matrix_ops::max_element_diff(U_acc, p.U_ref, N);
+
+        cout << "  " << left << setw(20) << p.name
+             << " ||Omega_ref||_1 = " << fixed << setprecision(4) << setw(8) << om_norm
+             << " |Cheb32-Pade| = " << scientific << setprecision(3) << setw(11) << diff_expm
+             << " |ACC6x40-U_ref| = " << scientific << setprecision(3) << diff_ref << "\n";
+    }
 
     // -------------------------------------------------------------------------
     // 2. ЧАСТЬ 1: Точность и FLOPs методов Магнуса в зависимости от dt
     // -------------------------------------------------------------------------
-    const string part1_csv_path = utils::results_path("experiment_part1_omega_dt.csv");
+    const string part1_csv_path = utils::results_path("experiment_part1_omega_dt_sin100pi.csv");
     ofstream part1_csv(part1_csv_path);
     part1_csv << "Method,Order,NumSteps,dt,Problem,GlobalError,SingleStepOmegaError,FLOPs,Time_ms,GFLOPS_s,Is_Worst\n";
 
-    cout << "\n========================================================================================================\n";
-    cout << " PART 1: Magnus Methods vs dt on [0, " << T_TOTAL << "] (Console shows WORST-CASE only)\n";
-    cout << "========================================================================================================\n";
-    cout << left << setw(14) << "Method"
-         << setw(6) << "Ord"
-         << setw(7) << "Steps"
-         << setw(10) << "dt"
-         << setw(15) << "Worst Error"
+    cout << "\n======================================================================================================================\n";
+    cout << " PART 1: Magnus Methods vs dt on [0, " << scientific << setprecision(3) << T_TOTAL
+         << "] (Console shows WORST-CASE only)\n";
+    cout << "======================================================================================================================\n";
+    cout << left << setw(12) << "Method"
+         << setw(5) << "Ord"
+         << setw(6) << "Steps"
+         << setw(11) << "dt"
+         << setw(25) << "Worst Error"
          << setw(16) << "FLOPs (Omega)"
          << setw(12) << "Time (ms)"
          << setw(9) << "GFLOP/s"
          << "Worst Matrix\n";
-    cout << "--------------------------------------------------------------------------------------------------------\n";
+    cout << "----------------------------------------------------------------------------------------------------------------------\n";
 
     // 2.1. Classic Magnus (k = 1, 2, 3)
     for (int k : {1, 2, 3}) {
@@ -1484,7 +1499,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // 2.2. ACC Magnus (k = 1, 4, 6 — 5-й убран, 4-й добавлен, дубль 2-го убран)
+    // 2.2. ACC Magnus (k = 1, 4, 6)
     for (int k : {1, 4, 6}) {
         auto fn = make_acc_fn(k);
         for (int K : STEP_COUNTS) {
@@ -1500,32 +1515,28 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // 2.4. Formula 3.14 (только в Части 1)
-    for (int K : STEP_COUNTS) {
-        run_part1_config("Formula314", 4, K, problems, part1_csv, formula314_fn);
-    }
-
     part1_csv.close();
 
     // -------------------------------------------------------------------------
     // 3. ЧАСТЬ 2: 2D-сетка (dt x M) для ACC4+Cheb, ACC6+Cheb, Recursive4+Cheb
     // -------------------------------------------------------------------------
-    const string part2_csv_path = utils::results_path("experiment_part2_step_dt_cheb.csv");
+    const string part2_csv_path = utils::results_path("experiment_part2_step_dt_cheb_sin100pi.csv");
     ofstream part2_csv(part2_csv_path);
     part2_csv << "Method,MagnusOrder,NumSteps,dt,ChebOrder,Problem,GlobalError,UnitarityDefect,FLOPs,Time_ms,GFLOPS_s,Is_Worst\n";
 
-    cout << "\n========================================================================================================\n";
-    cout << " PART 2: Full Propagation (Magnus + Chebyshev) vs (dt, M) on [0, " << T_TOTAL << "] (WORST-CASE)\n";
-    cout << "========================================================================================================\n";
+    cout << "\n======================================================================================================================\n";
+    cout << " PART 2: Full Propagation (Magnus + Chebyshev) vs (dt, M) on [0, " << scientific << setprecision(3) << T_TOTAL
+         << "] (WORST-CASE)\n";
+    cout << "======================================================================================================================\n";
     cout << left << setw(22) << "Method"
-         << setw(7) << "Steps"
-         << setw(10) << "dt"
-         << setw(6) << "M"
-         << setw(15) << "Worst Error"
+         << setw(6) << "Steps"
+         << setw(11) << "dt"
+         << setw(5) << "M"
+         << setw(25) << "Worst Error"
          << setw(16) << "FLOPs (Total)"
          << setw(12) << "Time (ms)"
          << "Worst Matrix\n";
-    cout << "--------------------------------------------------------------------------------------------------------\n";
+    cout << "----------------------------------------------------------------------------------------------------------------------\n";
 
     struct Part2MethodSpec {
         string name;
@@ -1549,11 +1560,11 @@ int main(int argc, char* argv[]) {
 
     part2_csv.close();
 
-    cout << "\n========================================================================================================\n";
+    cout << "\n======================================================================================================================\n";
     cout << "DONE. Raw datasets saved for Excel analysis:\n"
          << "  Part 1: " << part1_csv_path << "\n"
          << "  Part 2: " << part2_csv_path << "\n"
-         << "========================================================================================================\n";
+         << "======================================================================================================================\n";
 
     return 0;
 }

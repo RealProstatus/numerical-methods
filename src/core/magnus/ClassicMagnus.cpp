@@ -193,6 +193,7 @@ CMatrix magnus_classic(double t0, double t1, double dt, int N,
 }
 
 // ------ Целочисленная генерация равномерной сетки с точной фиксацией [t0, t1] ------
+// Модуляция: f(t) = eps0 * sin(W * t)
 vector<CMatrix> generate_samples(double t0, double t1, double dt, int N,
     const CMatrix& H0, const CMatrix& H_mod,
     double eps0, double W)
@@ -209,7 +210,7 @@ vector<CMatrix> generate_samples(double t0, double t1, double dt, int N,
         const double t = (i == 0) ? t0
                        : (i == n_intervals) ? t1
                        : (t0 + span * (static_cast<double>(i) / static_cast<double>(n_intervals)));
-        const double f_t = eps0 * std::cos(W * t);
+        const double f_t = eps0 * std::sin(W * t);
 
         // A(t) = -i * (H0 + f(t) * H_mod)
         CMatrix A_t((size_t)N * N, complexd(0.0, 0.0));

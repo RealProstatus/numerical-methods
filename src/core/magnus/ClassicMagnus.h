@@ -4,7 +4,7 @@
 
 using namespace std;
 
-// ------ Генерация сэмплов A(t) = -i * (H0 + eps0 * cos(W * t) * H_mod) ------
+// ------ Генерация сэмплов A(t) = -i * (H0 + eps0 * sin(W * t) * H_mod) ------
 vector<CMatrix> generate_samples(double t0, double t1, double dt, int N,
     const CMatrix& H0, const CMatrix& H_mod,
     double eps0, double W);
@@ -25,3 +25,4 @@ CMatrix magnus_classic(
     int N, const CMatrix& H0, const CMatrix& H_mod,
     double eps0, double W,
     int max_order);
+    
